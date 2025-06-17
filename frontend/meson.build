@@ -1,12 +1,6 @@
 # frontend/meson.build
 
-project(
-  'karere',
-  'c',
-  version: '0.1.0',
-  meson_version: '>= 0.60.0',
-)
-
+# Import required modules
 i18n = import('i18n')
 gnome = import('gnome')
 
