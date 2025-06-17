@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Karere
+Comment=A WhatsApp client for the Linux Desktop
+Exec=karere
+Icon=io.github.tobagin.Karere
+Type=Application
+Terminal=false
+Categories=Network;InstantMessaging;
+StartupNotify=true

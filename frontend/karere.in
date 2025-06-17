@@ -1,0 +1,12 @@
+#!/bin/sh
+# This shebang line is ESSENTIAL.
+
+# We must explicitly set the PYTHONPATH for development.
+# `meson devenv` does not automatically add the source directory.
+# The @source_dir@ variable is replaced by Meson with the path to the 'frontend' directory.
+export PYTHONPATH="@source_dir@"
+
+# The GSETTINGS_SCHEMA_DIR is handled by `meson devenv`.
+
+# Execute the main Python module.
+exec @python@ -m karere.main

@@ -1,0 +1,22 @@
+{
+  "name": "karere-backend",
+  "version": "1.0.0",
+  "description": "Baileys backend for the Karere WhatsApp client.",
+  "main": "backend.js",
+  "type": "module",
+  "scripts": {
+    "start": "node backend.js"
+  },
+  "keywords": [
+    "whatsapp",
+    "baileys",
+    "gtk"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.18",
+    "qrcode": "^1.5.4",
+    "ws": "^8.18.2"
+  }
+}

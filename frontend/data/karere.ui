@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <requires lib="adw" version="1.0"/>
+  <template class="KarereWindow" parent="AdwApplicationWindow">
+    <property name="default-width">800</property>
+    <property name="default-height">600</property>
+    <property name="title">Karere</property>
+    <property name="content">
+      <object class="AdwToastOverlay" id="toast_overlay">
+        <property name="child">
+          <object class="GtkBox">
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="AdwHeaderBar" id="header_bar"/>
+            </child>
+            <child>
+                <object class="GtkStack" id="main_stack">
+                    <property name="vexpand">true</property>
+                    <!-- Connecting View -->
+                    <child>
+                        <object class="GtkStackPage">
+                            <property name="name">connecting_view</property>
+                            <property name="title">Connecting</property>
+                            <property name="child">
+                                <object class="AdwStatusPage">
+                                    <property name="title">Connecting to WhatsApp</property>
+                                    <property name="description">Please wait...</property>
+                                    <property name="child">
+                                        <object class="GtkSpinner">
+                                            <property name="spinning">true</property>
+                                        </object>
+                                    </property>
+                                </object>
+                            </property>
+                        </object>
+                    </child>
+                    <!-- New Reconnecting View -->
+                    <child>
+                        <object class="GtkStackPage">
+                            <property name="name">reconnecting_view</property>
+                            <property name="title">Reconnecting</property>
+                            <property name="child">
+                                <object class="AdwStatusPage">
+                                    <property name="title">Connection Lost</property>
+                                    <property name="description">Attempting to reconnect to the backend service...</property>
+                                    <property name="child">
+                                        <object class="GtkSpinner">
+                                            <property name="spinning">true</property>
+                                        </object>
+                                    </property>
+                                </object>
+                            </property>
+                        </object>
+                    </child>
+                    <!-- QR Code View -->
+                    <child>
+                        <object class="GtkStackPage">
+                            <property name="name">qr_view</property>
+                            <property name="title">Login</property>
+                            <property name="child">
+                                <object class="GtkBox">
+                                    <property name="orientation">vertical</property>
+                                    <property name="valign">center</property>
+                                    <property name="halign">center</property>
+                                    <property name="spacing">20</property>
+                                    <child>
+                                        <object class="GtkLabel">
+                                            <property name="label">Scan QR Code with WhatsApp</property>
+                                            <attributes>
+                                                <attribute name="weight" value="bold"></attribute>
+                                                <attribute name="scale" value="1.5"></attribute>
+                                            </attributes>
+                                        </object>
+                                    </child>
+                                    <child>
+                                        <object class="GtkOverlay">
+                                            <property name="child">
+                                                <object class="GtkImage" id="qr_image">
+                                                    <property name="width-request">250</property>
+                                                    <property name="height-request">250</property>
+                                                    <property name="visible">false</property>
+                                                </object>
+                                            </property>
+                                            <child type="overlay">
+                                                <object class="GtkSpinner" id="qr_spinner">
+                                                     <property name="spinning">true</property>
+                                                     <property name="halign">center</property>
+                                                     <property name="valign">center</property>
+                                                </object>
+                                            </child>
+                                        </object>
+                                    </child>
+                                </object>
+                            </property>
+                        </object>
+                    </child>
+                    <!-- Chat View -->
+                    <child>
+                        <object class="GtkStackPage">
+                            <property name="name">chat_view</property>
+                            <property name="title">Chats</property>
+                            <property name="child">
+                                <object class="AdwNavigationSplitView" id="split_view">
+                                    <property name="sidebar">
+                                        <object class="AdwNavigationPage">
+                                            <property name="title">Chats</property>
+                                            <property name="child">
+                                                <object class="GtkScrolledWindow">
+                                                    <property name="child">
+                                                        <object class="GtkListBox" id="chat_list_box"/>
+                                                    </property>
+                                                </object>
+                                            </property>
+                                        </object>
+                                    </property>
+                                    <property name="content">
+                                        <object class="GtkStack" id="message_stack">
+                                            <child>
+                                                <object class="GtkStackPage">
+                                                    <property name="name">welcome_view</property>
+                                                    <property name="child">
+                                                         <object class="AdwStatusPage">
+                                                            <property name="title">Welcome to Karere</property>
+                                                            <property name="description">Select a chat to start messaging.</property>
+                                                            <property name="icon-name">org.gnome.Characters-symbolic</property>
+                                                        </object>
+                                                    </property>
+                                                </object>
+                                            </child>
+                                        </object>
+                                    </property>
+                                </object>
+                            </property>
+                        </object>
+                    </child>
+                </object>
+            </child>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+</interface>

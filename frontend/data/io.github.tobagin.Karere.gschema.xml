@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="io.github.tobagin.Karere" path="/io/github/tobagin/Karere/">
+    <!-- Example key, you can add more for window size, etc. -->
+    <!-- <key name="window-width" type="i">
+      <default>800</default>
+      <summary>Window width</summary>
+    </key> -->
+  </schema>
+</schemalist>
