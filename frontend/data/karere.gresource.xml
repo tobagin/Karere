@@ -3,5 +3,6 @@
 <gresources>
   <gresource prefix="/io/github/tobagin/Karere">
     <file>karere.ui</file>
+    <file>style.css</file>
   </gresource>
 </gresources>

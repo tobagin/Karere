@@ -1,0 +1,66 @@
+/* Karere Message Styling */
+
+.message-bubble-sent {
+    background-color: @accent_color;
+    color: @accent_fg_color;
+    border-radius: 18px;
+    padding: 8px 12px;
+    margin: 2px 8px 2px 48px;
+    max-width: 70%;
+}
+
+.message-bubble-received {
+    background-color: @card_bg_color;
+    color: @card_fg_color;
+    border-radius: 18px;
+    padding: 8px 12px;
+    margin: 2px 48px 2px 8px;
+    max-width: 70%;
+    border: 1px solid @borders;
+}
+
+.message-bubble-sent label,
+.message-bubble-received label {
+    padding: 0;
+    margin: 0;
+}
+
+/* Chat list styling */
+.chat-row {
+    padding: 8px 12px;
+    border-bottom: 1px solid @borders;
+}
+
+.chat-row:hover {
+    background-color: @view_hover_bg_color;
+}
+
+.chat-row:selected {
+    background-color: @accent_bg_color;
+    color: @accent_fg_color;
+}
+
+/* Message input area */
+#message_input_box {
+    background-color: @headerbar_bg_color;
+    border-top: 1px solid @borders;
+}
+
+/* Messages list */
+#messages_list_box {
+    padding: 8px 0;
+}
+
+#messages_list_box row {
+    background: none;
+    border: none;
+    padding: 2px 0;
+}
+
+#messages_list_box row:hover {
+    background: none;
+}
+
+#messages_list_box row:selected {
+    background: none;
+}

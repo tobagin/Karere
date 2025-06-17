@@ -58,6 +58,10 @@ wss.on('connection', ws => {
                     console.log('Cache is empty, setting client waiting flag to true.');
                     clientIsWaitingForChats = true;
                 }
+            } else if (parsedMessage.type === 'send_message') {
+                handleSendMessage(parsedMessage.data);
+            } else if (parsedMessage.type === 'get_message_history') {
+                handleGetMessageHistory(parsedMessage.data);
             }
 
         } catch (error) {
@@ -76,6 +80,70 @@ wss.on('connection', ws => {
 function sendToFrontend(type, data) {
     if (clientSocket && clientSocket.readyState === clientSocket.OPEN) {
         clientSocket.send(JSON.stringify({ type, data }));
+    }
+}
+
+async function handleSendMessage(data) {
+    const { to, message } = data;
+
+    if (!sock || baileysConnectionStatus !== 'open') {
+        console.error('Cannot send message: Baileys not connected');
+        sendToFrontend('message_error', { error: 'Not connected to WhatsApp' });
+        return;
+    }
+
+    try {
+        console.log(`Sending message to ${to}: ${message}`);
+
+        // Send message via Baileys
+        await sock.sendMessage(to, { text: message });
+
+        // Confirm message sent
+        sendToFrontend('message_sent', { to, message });
+        console.log(`Message sent successfully to ${to}`);
+
+    } catch (error) {
+        console.error('Error sending message:', error);
+        sendToFrontend('message_error', {
+            error: 'Failed to send message',
+            details: error.message
+        });
+    }
+}
+
+async function handleGetMessageHistory(data) {
+    const { jid, limit = 50 } = data;
+
+    if (!sock || baileysConnectionStatus !== 'open') {
+        console.error('Cannot get message history: Baileys not connected');
+        sendToFrontend('message_history_error', { error: 'Not connected to WhatsApp' });
+        return;
+    }
+
+    try {
+        console.log(`Fetching message history for ${jid}`);
+
+        // Get message history from Baileys
+        const messages = await sock.fetchMessageHistory(jid, limit);
+
+        // Process messages for frontend
+        const processedMessages = messages.map(msg => ({
+            id: msg.key.id,
+            from: msg.key.remoteJid,
+            fromMe: msg.key.fromMe,
+            text: getDisplayMessage(msg),
+            timestamp: msg.messageTimestamp
+        }));
+
+        sendToFrontend('message_history', { jid, messages: processedMessages });
+        console.log(`Sent ${processedMessages.length} messages for ${jid}`);
+
+    } catch (error) {
+        console.error('Error fetching message history:', error);
+        sendToFrontend('message_history_error', {
+            error: 'Failed to fetch message history',
+            details: error.message
+        });
     }
 }
 

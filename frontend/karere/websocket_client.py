@@ -22,6 +22,9 @@ class WebSocketClient(GObject.Object):
         'new-message': (GObject.SignalFlags.RUN_FIRST, None, (str, str,)),
         'initial-chats': (GObject.SignalFlags.RUN_FIRST, None, (GObject.TYPE_PYOBJECT,)),
         'baileys-ready': (GObject.SignalFlags.RUN_FIRST, None, ()),
+        'message-sent': (GObject.SignalFlags.RUN_FIRST, None, (str, str,)),
+        'message-error': (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        'message-history': (GObject.SignalFlags.RUN_FIRST, None, (str, GObject.TYPE_PYOBJECT,)),
     }
 
     def __init__(self, url="ws://localhost:8765"):
@@ -66,6 +69,12 @@ class WebSocketClient(GObject.Object):
                 GLib.idle_add(self.emit, 'new-message', msg_data['from'], msg_data['body'])
             elif msg_type == 'initial_chats':
                 GLib.idle_add(self.emit, 'initial-chats', msg_data['chats'])
+            elif msg_type == 'message_sent':
+                GLib.idle_add(self.emit, 'message-sent', msg_data['to'], msg_data['message'])
+            elif msg_type == 'message_error':
+                GLib.idle_add(self.emit, 'message-error', msg_data['error'])
+            elif msg_type == 'message_history':
+                GLib.idle_add(self.emit, 'message-history', msg_data['jid'], msg_data['messages'])
         except Exception as e:
             print(f"Error processing message: {e}")
 

@@ -28,6 +28,9 @@ class KarereApplication(Adw.Application):
         Gio.resources_register(res)
         print("Resources loaded successfully.")
 
+        # Load CSS styling
+        self.load_css()
+
     def do_activate(self):
         from .window import KarereWindow
         if not self.win:
@@ -45,6 +48,9 @@ class KarereApplication(Adw.Application):
         self.ws_client.connect('new-message', self.on_new_message)
         self.ws_client.connect('initial-chats', self.on_initial_chats)
         self.ws_client.connect('baileys-ready', self.on_baileys_ready)
+        self.ws_client.connect('message-sent', self.on_message_sent)
+        self.ws_client.connect('message-error', self.on_message_error)
+        self.ws_client.connect('message-history', self.on_message_history)
         self.ws_client.start()
         print("WebSocket client setup and started.")
 
@@ -83,6 +89,43 @@ class KarereApplication(Adw.Application):
     def on_new_message(self, _, from_jid, body):
         print(f"New message from {from_jid}: {body}")
         self.win.add_or_update_chat(from_jid, body)
+
+    def on_message_sent(self, _, to_jid, message):
+        """Handler for when a message is successfully sent."""
+        print(f"Message sent to {to_jid}: {message}")
+        self.win.show_toast("Message sent")
+
+    def on_message_error(self, _, error):
+        """Handler for message sending errors."""
+        print(f"Message error: {error}")
+        self.win.show_toast(f"Error: {error}")
+
+    def on_message_history(self, _, jid, messages):
+        """Handler for receiving message history."""
+        print(f"Received {len(messages)} messages for {jid}")
+        # Process and display message history
+        for msg in messages:
+            self.win.add_message_to_chat(
+                jid,
+                msg['text'],
+                is_from_me=msg['fromMe']
+            )
+
+    def load_css(self):
+        """Load CSS styling for the application."""
+        try:
+            css_provider = Gtk.CssProvider()
+            css_provider.load_from_resource('/io/github/tobagin/Karere/style.css')
+
+            display = Gtk.Widget.get_default_display()
+            Gtk.StyleContext.add_provider_for_display(
+                display,
+                css_provider,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+            )
+            print("CSS styling loaded successfully.")
+        except Exception as e:
+            print(f"Failed to load CSS: {e}")
 
 def main():
     app = KarereApplication()
