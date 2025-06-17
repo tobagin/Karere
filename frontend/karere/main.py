@@ -3,12 +3,22 @@
 import sys
 import os
 import gi
+import subprocess
+import signal
+import atexit
+import time
+import threading
+from pathlib import Path
 
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 
 from gi.repository import Gtk, Adw, Gio, GLib
-from .websocket_client import WebSocketClient
+
+# Add the current directory to Python path for imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from websocket_client import WebSocketClient
 
 class KarereApplication(Adw.Application):
     """The main Karere Application class."""
@@ -17,29 +27,140 @@ class KarereApplication(Adw.Application):
         super().__init__(application_id='io.github.tobagin.Karere', **kwargs)
         self.win = None
         self.ws_client = None
+        self.backend_process = None
+        self.backend_ready = False
+
+        # Register cleanup handlers
+        atexit.register(self.cleanup_backend)
+        signal.signal(signal.SIGTERM, self._signal_handler)
+        signal.signal(signal.SIGINT, self._signal_handler)
 
     def do_startup(self):
         Adw.Application.do_startup(self)
-        resource_file = 'karere-resources.gresource'
-        if not os.path.exists(resource_file):
-            print(f"ERROR: Resource file not found at: {os.path.abspath(resource_file)}")
-            sys.exit(1)
-        res = Gio.Resource.load(resource_file)
-        Gio.resources_register(res)
-        print("Resources loaded successfully.")
+
+        # Try to find the resource file in different locations
+        resource_locations = [
+            'karere-resources.gresource',
+            'frontend/karere-resources.gresource',
+            '../frontend/karere-resources.gresource',
+            os.path.join(os.path.dirname(__file__), '..', '..', 'builddir', 'frontend', 'karere-resources.gresource')
+        ]
+
+        resource_file = None
+        for location in resource_locations:
+            if os.path.exists(location):
+                resource_file = location
+                break
+
+        if resource_file:
+            res = Gio.Resource.load(resource_file)
+            Gio.resources_register(res)
+            print(f"Resources loaded successfully from: {resource_file}")
+        else:
+            print("WARNING: Resource file not found, continuing without resources")
+            print(f"Searched in: {resource_locations}")
 
         # Load CSS styling
         self.load_css()
 
+        # Start backend process
+        self.start_backend()
+
     def do_activate(self):
-        from .window import KarereWindow
+        from window import KarereWindow
         if not self.win:
             self.win = KarereWindow(application=self)
             self.setup_websocket()
         self.win.present()
 
+    def start_backend(self):
+        """Start the backend Node.js process."""
+        try:
+            # Find the backend directory
+            backend_paths = [
+                # Development paths
+                os.path.join(os.path.dirname(__file__), '..', '..', 'backend'),
+                # Flatpak paths
+                '/app/share/karere-backend',
+                # System installation paths
+                '/usr/share/karere-backend',
+                '/usr/local/share/karere-backend',
+                # Relative paths
+                'backend',
+                '../backend',
+                '../../backend'
+            ]
+
+            backend_dir = None
+            for path in backend_paths:
+                if os.path.exists(os.path.join(path, 'backend.js')):
+                    backend_dir = path
+                    break
+
+            if not backend_dir:
+                print(f"ERROR: Backend not found in any of these locations: {backend_paths}")
+                return False
+
+            print(f"Starting backend from: {backend_dir}")
+
+            # Start the backend process
+            self.backend_process = subprocess.Popen(
+                ['node', 'backend.js'],
+                cwd=backend_dir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                preexec_fn=os.setsid  # Create new process group
+            )
+
+            print(f"Backend process started with PID: {self.backend_process.pid}")
+
+            # Start a thread to monitor backend output
+            threading.Thread(target=self._monitor_backend_output, daemon=True).start()
+
+            # Wait a moment for backend to start
+            time.sleep(2)
+
+            return True
+
+        except Exception as e:
+            print(f"Failed to start backend: {e}")
+            return False
+
+    def _monitor_backend_output(self):
+        """Monitor backend process output for debugging."""
+        if not self.backend_process:
+            return
+
+        try:
+            while self.backend_process.poll() is None:
+                output = self.backend_process.stdout.readline()
+                if output:
+                    print(f"Backend: {output.decode().strip()}")
+
+                    # Check if backend is ready
+                    if b"WebSocket server started" in output:
+                        self.backend_ready = True
+                        GLib.idle_add(self._on_backend_ready)
+
+        except Exception as e:
+            print(f"Error monitoring backend output: {e}")
+
+    def _on_backend_ready(self):
+        """Called when backend is ready to accept connections."""
+        print("Backend is ready, setting up WebSocket connection...")
+        # Small delay to ensure backend is fully ready
+        GLib.timeout_add(1000, self._delayed_websocket_setup)
+
+    def _delayed_websocket_setup(self):
+        """Setup WebSocket connection after backend is ready."""
+        self.setup_websocket()
+        return False  # Don't repeat the timeout
+
     def setup_websocket(self):
         """Initializes and connects signals for the WebSocket client."""
+        if self.ws_client:
+            return  # Already setup
+
         self.ws_client = WebSocketClient()
         self.ws_client.connect('qr-received', self.on_qr_received)
         self.ws_client.connect('status-update', self.on_status_update)
@@ -126,6 +247,37 @@ class KarereApplication(Adw.Application):
             print("CSS styling loaded successfully.")
         except Exception as e:
             print(f"Failed to load CSS: {e}")
+
+    def cleanup_backend(self):
+        """Clean up the backend process."""
+        if self.backend_process:
+            try:
+                print("Shutting down backend process...")
+
+                # Try graceful shutdown first
+                self.backend_process.terminate()
+
+                # Wait for graceful shutdown
+                try:
+                    self.backend_process.wait(timeout=5)
+                    print("Backend process terminated gracefully")
+                except subprocess.TimeoutExpired:
+                    # Force kill if graceful shutdown fails
+                    print("Backend process didn't terminate gracefully, forcing shutdown...")
+                    os.killpg(os.getpgid(self.backend_process.pid), signal.SIGKILL)
+                    self.backend_process.wait()
+                    print("Backend process killed")
+
+            except Exception as e:
+                print(f"Error during backend cleanup: {e}")
+            finally:
+                self.backend_process = None
+
+    def _signal_handler(self, signum, frame):
+        """Handle system signals for graceful shutdown."""
+        print(f"Received signal {signum}, shutting down...")
+        self.cleanup_backend()
+        sys.exit(0)
 
 def main():
     app = KarereApplication()

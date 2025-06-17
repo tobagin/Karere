@@ -1,0 +1,335 @@
+2025-06-17 20:51:43 [INFO]: Starting Karere Backend initialization
+2025-06-17 20:51:43 [INFO]: Initializing Service Manager
+2025-06-17 20:51:43 [INFO]: Cron job scheduled: health-check (*/5 * * * *)
+2025-06-17 20:51:43 [INFO]: Cron job scheduled: log-rotation (0 * * * *)
+2025-06-17 20:51:43 [INFO]: Cron job scheduled: database-cleanup (0 2 * * *)
+2025-06-17 20:51:43 [INFO]: Cron job scheduled: memory-report (0 * * * *)
+2025-06-17 20:51:43 [INFO]: System Information
+{
+  "nodeVersion": "v22.16.0",
+  "platform": "linux",
+  "arch": "arm64",
+  "memory": {
+    "rss": 138059776,
+    "heapTotal": 46845952,
+    "heapUsed": 32430368,
+    "external": 3511728,
+    "arrayBuffers": 70016
+  },
+  "uptime": 4.527013329
+}
+2025-06-17 20:51:43 [INFO]: Karere Backend Starting
+{
+  "pid": 41386
+}
+2025-06-17 20:51:43 [INFO]: Service Manager initialized successfully
+2025-06-17 20:51:43 [INFO]: Initializing database
+{
+  "path": "data/karere.db"
+}
+2025-06-17 20:51:43 [INFO]: Database tables and indexes created successfully
+2025-06-17 20:51:43 [INFO]: Performance: database_initialization completed in 103ms
+{
+  "type": "performance",
+  "operation": "database_initialization",
+  "duration": 103
+}
+2025-06-17 20:51:43 [INFO]: Database initialized successfully
+2025-06-17 20:51:43 [INFO]: Service registered: database
+2025-06-17 20:51:43 [INFO]: Performance: websocket_server_init completed in 10ms
+{
+  "type": "performance",
+  "operation": "websocket_server_init",
+  "duration": 10
+}
+2025-06-17 20:51:43 [INFO]: WebSocket server started on ws://localhost:8765
+2025-06-17 20:51:43 [INFO]: Service registered: websocket
+2025-06-17 20:51:43 [INFO]: Initializing WhatsApp connection
+{
+  "component": "baileys"
+}
+2025-06-17 20:51:44 [INFO]: Using WhatsApp version 2.3000.1023223821
+{
+  "component": "baileys"
+}
+2025-06-17 20:51:44 [INFO]: Performance: whatsapp_connection completed in 434ms
+{
+  "type": "performance",
+  "operation": "whatsapp_connection",
+  "duration": 434
+}
+2025-06-17 20:51:44 [INFO]: WhatsApp socket initialized successfully
+{
+  "component": "baileys"
+}
+2025-06-17 20:51:44 [INFO]: Karere Backend initialized successfully
+2025-06-17 20:51:44 [INFO]: Connecting to WhatsApp...
+{
+  "component": "baileys"
+}
+2025-06-17 20:51:44 [WARN]: Cannot send to frontend: no active connection
+{
+  "type": "connection_status"
+}
+2025-06-17 20:51:45 [INFO]: WhatsApp connection is open
+{
+  "component": "baileys"
+}
+2025-06-17 20:51:45 [WARN]: Cannot send to frontend: no active connection
+{
+  "type": "baileys_ready"
+}
+2025-06-17 20:51:45 [WARN]: Cannot send to frontend: no active connection
+{
+  "type": "connection_status"
+}
+2025-06-17 20:51:45 [INFO]: Loading initial chats
+{
+  "component": "baileys"
+}
+2025-06-17 20:51:45 [INFO]: Performance: get_chats completed in 30ms
+{
+  "count": 0,
+  "type": "performance",
+  "operation": "get_chats",
+  "duration": 30
+}
+2025-06-17 20:51:55 [INFO]: Performance: message_upsert completed in 0ms
+{
+  "type": "performance",
+  "operation": "message_upsert",
+  "duration": 0
+}
+2025-06-17 20:54:42 [INFO]: Starting Karere Backend initialization
+2025-06-17 20:54:42 [INFO]: Initializing Service Manager
+2025-06-17 20:54:42 [INFO]: Cron job scheduled: health-check (*/5 * * * *)
+2025-06-17 20:54:42 [INFO]: Cron job scheduled: log-rotation (0 * * * *)
+2025-06-17 20:54:42 [INFO]: Cron job scheduled: database-cleanup (0 2 * * *)
+2025-06-17 20:54:42 [INFO]: Cron job scheduled: memory-report (0 * * * *)
+2025-06-17 20:54:42 [INFO]: System Information
+{
+  "nodeVersion": "v22.16.0",
+  "platform": "linux",
+  "arch": "arm64",
+  "memory": {
+    "rss": 134205440,
+    "heapTotal": 47632384,
+    "heapUsed": 31819384,
+    "external": 3511728,
+    "arrayBuffers": 70016
+  },
+  "uptime": 3.3492852
+}
+2025-06-17 20:54:42 [INFO]: Karere Backend Starting
+{
+  "pid": 41863
+}
+2025-06-17 20:54:42 [INFO]: Service Manager initialized successfully
+2025-06-17 20:54:42 [INFO]: Initializing database
+{
+  "path": "data/karere.db"
+}
+2025-06-17 20:54:42 [INFO]: Database tables and indexes created successfully
+2025-06-17 20:54:42 [INFO]: Performance: database_initialization completed in 41ms
+{
+  "type": "performance",
+  "operation": "database_initialization",
+  "duration": 41
+}
+2025-06-17 20:54:42 [INFO]: Database initialized successfully
+2025-06-17 20:54:42 [INFO]: Service registered: database
+2025-06-17 20:54:42 [INFO]: Performance: websocket_server_init completed in 11ms
+{
+  "type": "performance",
+  "operation": "websocket_server_init",
+  "duration": 11
+}
+2025-06-17 20:54:42 [INFO]: WebSocket server started on ws://localhost:8765
+2025-06-17 20:54:42 [INFO]: Service registered: websocket
+2025-06-17 20:54:42 [INFO]: Initializing WhatsApp connection
+{
+  "component": "baileys"
+}
+2025-06-17 20:54:42 [INFO]: Using WhatsApp version 2.3000.1023223821
+{
+  "component": "baileys"
+}
+2025-06-17 20:54:42 [INFO]: Performance: whatsapp_connection completed in 302ms
+{
+  "type": "performance",
+  "operation": "whatsapp_connection",
+  "duration": 302
+}
+2025-06-17 20:54:42 [INFO]: WhatsApp socket initialized successfully
+{
+  "component": "baileys"
+}
+2025-06-17 20:54:42 [INFO]: Karere Backend initialized successfully
+2025-06-17 20:54:42 [INFO]: Connecting to WhatsApp...
+{
+  "component": "baileys"
+}
+2025-06-17 20:54:42 [WARN]: Cannot send to frontend: no active connection
+{
+  "type": "connection_status"
+}
+2025-06-17 20:54:43 [INFO]: WhatsApp connection is open
+{
+  "component": "baileys"
+}
+2025-06-17 20:54:43 [WARN]: Cannot send to frontend: no active connection
+{
+  "type": "baileys_ready"
+}
+2025-06-17 20:54:43 [WARN]: Cannot send to frontend: no active connection
+{
+  "type": "connection_status"
+}
+2025-06-17 20:54:43 [INFO]: Loading initial chats
+{
+  "component": "baileys"
+}
+2025-06-17 20:54:43 [INFO]: Performance: get_chats completed in 16ms
+{
+  "count": 0,
+  "type": "performance",
+  "operation": "get_chats",
+  "duration": 16
+}
+2025-06-17 20:54:57 [INFO]: Performance: get_chats completed in 3ms
+{
+  "count": 0,
+  "type": "performance",
+  "operation": "get_chats",
+  "duration": 3
+}
+2025-06-17 20:54:57 [INFO]: Cache is empty, setting client waiting flag to true.
+2025-06-17 20:54:57 [INFO]: Performance: websocket_message_processing completed in 10ms
+{
+  "type": "performance",
+  "operation": "websocket_message_processing",
+  "duration": 10
+}
+2025-06-17 21:00:49 [INFO]: Starting Karere Backend initialization
+2025-06-17 21:00:49 [INFO]: Initializing Service Manager
+2025-06-17 21:00:49 [INFO]: Cron job scheduled: health-check (*/5 * * * *)
+2025-06-17 21:00:49 [INFO]: Cron job scheduled: log-rotation (0 * * * *)
+2025-06-17 21:00:49 [INFO]: Cron job scheduled: database-cleanup (0 2 * * *)
+2025-06-17 21:00:49 [INFO]: Cron job scheduled: memory-report (0 * * * *)
+2025-06-17 21:00:49 [INFO]: System Information
+{
+  "nodeVersion": "v22.16.0",
+  "platform": "linux",
+  "arch": "arm64",
+  "memory": {
+    "rss": 139624448,
+    "heapTotal": 47632384,
+    "heapUsed": 31925776,
+    "external": 3511728,
+    "arrayBuffers": 70016
+  },
+  "uptime": 3.912385302
+}
+2025-06-17 21:00:49 [INFO]: Karere Backend Starting
+{
+  "pid": 42490
+}
+2025-06-17 21:00:49 [INFO]: Service Manager initialized successfully
+2025-06-17 21:00:49 [INFO]: Initializing database
+{
+  "path": "data/karere.db"
+}
+2025-06-17 21:00:50 [INFO]: Database tables and indexes created successfully
+2025-06-17 21:00:50 [INFO]: Performance: database_initialization completed in 65ms
+{
+  "type": "performance",
+  "operation": "database_initialization",
+  "duration": 65
+}
+2025-06-17 21:00:50 [INFO]: Database initialized successfully
+2025-06-17 21:00:50 [INFO]: Service registered: database
+2025-06-17 21:00:50 [INFO]: Performance: websocket_server_init completed in 18ms
+{
+  "type": "performance",
+  "operation": "websocket_server_init",
+  "duration": 18
+}
+2025-06-17 21:00:50 [INFO]: WebSocket server started on ws://localhost:8765
+2025-06-17 21:00:50 [INFO]: Service registered: websocket
+2025-06-17 21:00:50 [INFO]: Initializing WhatsApp connection
+{
+  "component": "baileys"
+}
+2025-06-17 21:00:50 [INFO]: Using WhatsApp version 2.3000.1023223821
+{
+  "component": "baileys"
+}
+2025-06-17 21:00:50 [INFO]: Performance: whatsapp_connection completed in 363ms
+{
+  "type": "performance",
+  "operation": "whatsapp_connection",
+  "duration": 363
+}
+2025-06-17 21:00:50 [INFO]: WhatsApp socket initialized successfully
+{
+  "component": "baileys"
+}
+2025-06-17 21:00:50 [INFO]: Karere Backend initialized successfully
+2025-06-17 21:00:50 [INFO]: Connecting to WhatsApp...
+{
+  "component": "baileys"
+}
+2025-06-17 21:00:50 [WARN]: Cannot send to frontend: no active connection
+{
+  "type": "connection_status"
+}
+2025-06-17 21:00:53 [INFO]: Connection closed
+{
+  "statusCode": 401,
+  "reason": "Connection Failure",
+  "component": "baileys"
+}
+2025-06-17 21:00:53 [INFO]: Logged out, deleting credentials and restarting
+{
+  "component": "baileys"
+}
+2025-06-17 21:00:53 [INFO]: Authentication credentials deleted
+{
+  "component": "baileys"
+}
+2025-06-17 21:00:55 [INFO]: Initializing WhatsApp connection
+{
+  "component": "baileys"
+}
+2025-06-17 21:00:55 [INFO]: Using WhatsApp version 2.3000.1023223821
+{
+  "component": "baileys"
+}
+2025-06-17 21:00:55 [INFO]: Performance: whatsapp_connection completed in 179ms
+{
+  "type": "performance",
+  "operation": "whatsapp_connection",
+  "duration": 179
+}
+2025-06-17 21:00:55 [INFO]: WhatsApp socket initialized successfully
+{
+  "component": "baileys"
+}
+2025-06-17 21:00:55 [INFO]: Connecting to WhatsApp...
+{
+  "component": "baileys"
+}
+2025-06-17 21:00:55 [INFO]: QR Code received, generating image
+{
+  "component": "baileys"
+}
+2025-06-17 21:00:55 [INFO]: QR code sent to frontend
+{
+  "component": "baileys"
+}
+2025-06-17 21:01:07 [INFO]: Performance: websocket_connection completed in 14684ms
+{
+  "type": "performance",
+  "operation": "websocket_connection",
+  "duration": 14684
+}

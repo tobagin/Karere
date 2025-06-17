@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Baileys backend for the Karere WhatsApp client.",
   "main": "backend.js",
-  "type": "module",
+
   "type": "module",
   "scripts": {
     "start": "node backend.js",
@@ -40,13 +40,6 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "extensionsToTreatAsEsm": [".js"],
-    "globals": {
-      "jest": {
-        "useESM": true
-      }
-    },
-    "transform": {},
     "collectCoverageFrom": [
       "*.js",
       "!backend.js",

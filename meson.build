@@ -13,3 +13,18 @@ project(
 
 # Process the frontend subdirectory
 subdir('frontend')
+
+# Install backend files
+backend_files = [
+  'backend/backend.js',
+  'backend/logger.js',
+  'backend/database.js',
+  'backend/service-manager.js',
+  'backend/package.json',
+  'backend/package-lock.json'
+]
+
+install_data(
+  backend_files,
+  install_dir: get_option('datadir') / 'karere-backend'
+)

@@ -1,9 +1,8 @@
 // tests/setup.js
 // Global test setup and configuration
 
-import { jest } from '@jest/globals';
-import fs from 'fs/promises';
-import path from 'path';
+const fs = require('fs').promises;
+const path = require('path');
 
 // Global test configuration
 global.TEST_CONFIG = {
