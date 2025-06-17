@@ -17,6 +17,9 @@
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.18",
     "qrcode": "^1.5.4",
-    "ws": "^8.18.2"
+    "ws": "^8.18.2",
+    "winston": "^3.11.0",
+    "sqlite3": "^5.1.6",
+    "node-cron": "^3.0.3"
   }
 }
