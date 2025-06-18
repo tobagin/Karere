@@ -1,0 +1,6 @@
+#!/bin/bash
+# karere-dev
+# Simple launcher for Karere development version
+
+cd "$(dirname "$0")"
+exec ./scripts/run-dev.sh "$@"
