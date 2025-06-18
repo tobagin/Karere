@@ -1,3 +1,5 @@
 builddir
 baileys_auth_info
 node_modules
+.flatpak-builder
+builddir-dev
