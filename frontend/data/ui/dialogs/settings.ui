@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <requires lib="adw" version="1.0"/>
+  <template class="SettingsDialog" parent="AdwPreferencesDialog">
+    <property name="title">Settings</property>
+    <child>
+      <object class="AdwPreferencesPage">
+        <property name="title">General</property>
+        <property name="icon-name">applications-system-symbolic</property>
+        <child>
+          <object class="AdwPreferencesGroup">
+            <property name="title">Appearance</property>
+            <child>
+              <object class="AdwSwitchRow" id="dark_mode_switch">
+                <property name="title">Dark Mode</property>
+                <property name="subtitle">Use dark theme</property>
+              </object>
+            </child>
+            <child>
+              <object class="AdwComboRow" id="theme_combo">
+                <property name="title">Theme</property>
+                <property name="subtitle">Choose application theme</property>
+                <property name="model">
+                  <object class="GtkStringList">
+                    <items>
+                      <item>System</item>
+                      <item>Light</item>
+                      <item>Dark</item>
+                    </items>
+                  </object>
+                </property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwPreferencesGroup">
+            <property name="title">Notifications</property>
+            <child>
+              <object class="AdwSwitchRow" id="notifications_switch">
+                <property name="title">Enable Notifications</property>
+                <property name="subtitle">Show desktop notifications for new messages</property>
+              </object>
+            </child>
+            <child>
+              <object class="AdwSwitchRow" id="sound_switch">
+                <property name="title">Notification Sounds</property>
+                <property name="subtitle">Play sound for new messages</property>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="AdwPreferencesPage">
+        <property name="title">Privacy</property>
+        <property name="icon-name">security-high-symbolic</property>
+        <child>
+          <object class="AdwPreferencesGroup">
+            <property name="title">Message Privacy</property>
+            <child>
+              <object class="AdwSwitchRow" id="read_receipts_switch">
+                <property name="title">Read Receipts</property>
+                <property name="subtitle">Send read receipts to contacts</property>
+              </object>
+            </child>
+            <child>
+              <object class="AdwSwitchRow" id="typing_indicators_switch">
+                <property name="title">Typing Indicators</property>
+                <property name="subtitle">Show when you're typing</property>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

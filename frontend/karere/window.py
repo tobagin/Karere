@@ -8,6 +8,11 @@ from gi.repository import Gtk, Adw, GObject, Gio, GdkPixbuf
 import base64
 from io import BytesIO
 
+# Dynamic app ID for Flatpak compatibility
+# This will be automatically detected at runtime, but we need a default for the template decorator
+import os
+APP_ID = os.environ.get('FLATPAK_ID', 'io.github.tobagin.Karere')
+
 class ChatRow(Gtk.ListBoxRow):
     def __init__(self, jid, last_message, timestamp=None, unread_count=0):
         super().__init__()
@@ -142,141 +147,59 @@ class MessageRow(Gtk.ListBoxRow):
         self.is_from_me = is_from_me
         self.status = status
 
-        # Create message bubble
-        message_label = Gtk.Label(label=message_text)
+        # Create a simple label with no styling at all
+        message_label = Gtk.Label(label=f"[{'ME' if is_from_me else 'THEM'}] {message_text}")
         message_label.set_wrap(True)
-        message_label.set_wrap_mode(3)  # WORD_CHAR
         message_label.set_xalign(0.0)
-        message_label.set_selectable(True)
+        message_label.set_size_request(300, 50)  # Force a visible size
 
-        # Create bubble container
-        bubble = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        bubble.append(message_label)
-
-        # Create timestamp and status row
-        if timestamp or (is_from_me and status):
-            time_status_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
-
-            # Add timestamp
-            if timestamp:
-                time_label = Gtk.Label(label=self.format_timestamp(timestamp))
-                time_label.get_style_context().add_class('caption')
-                time_label.get_style_context().add_class('dim-label')
-                time_status_box.append(time_label)
-
-            # Add status indicator for sent messages
-            if is_from_me and status:
-                status_icon = Gtk.Image()
-                status_icon.get_style_context().add_class('caption')
-
-                if status == 'sending':
-                    status_icon.set_from_icon_name('content-loading-symbolic')
-                    status_icon.set_tooltip_text('Sending...')
-                elif status == 'sent':
-                    status_icon.set_from_icon_name('emblem-ok-symbolic')
-                    status_icon.set_tooltip_text('Sent')
-                elif status == 'delivered':
-                    status_icon.set_from_icon_name('emblem-ok-symbolic')
-                    status_icon.set_tooltip_text('Delivered')
-                elif status == 'read':
-                    status_icon.set_from_icon_name('emblem-ok-symbolic')
-                    status_icon.get_style_context().add_class('accent')
-                    status_icon.set_tooltip_text('Read')
-                elif status == 'error':
-                    status_icon.set_from_icon_name('dialog-error-symbolic')
-                    status_icon.get_style_context().add_class('error')
-                    status_icon.set_tooltip_text('Failed to send')
-
-                time_status_box.append(status_icon)
-
-            # Align timestamp/status to the right for sent messages
-            time_status_box.set_halign(Gtk.Align.END if is_from_me else Gtk.Align.START)
-            bubble.append(time_status_box)
-
-        # Style the bubble
-        if is_from_me:
-            bubble.get_style_context().add_class('message-bubble-sent')
-            bubble.set_halign(Gtk.Align.END)
-        else:
-            bubble.get_style_context().add_class('message-bubble-received')
-            bubble.set_halign(Gtk.Align.START)
-
-        # Add margins
-        bubble.set_margin_start(12)
-        bubble.set_margin_end(12)
-        bubble.set_margin_top(4)
-        bubble.set_margin_bottom(4)
-
-        self.set_child(bubble)
+        # Set the label directly as the child - no containers, no styling
+        self.set_child(message_label)
         self.set_selectable(False)
 
-    def format_timestamp(self, timestamp):
-        """Format timestamp for display."""
-        from datetime import datetime, timedelta
+        # Force visibility
+        self.set_visible(True)
+        message_label.set_visible(True)
 
-        if isinstance(timestamp, str):
-            # If it's already a formatted string, return as-is
-            return timestamp
+        print(f"Simple MessageRow created: '{message_text}'")
 
-        try:
-            if isinstance(timestamp, (int, float)):
-                # Unix timestamp
-                dt = datetime.fromtimestamp(timestamp)
-            else:
-                dt = timestamp
-
-            now = datetime.now()
-            diff = now - dt
-
-            if diff.days == 0:
-                # Today - show time
-                return dt.strftime("%H:%M")
-            elif diff.days == 1:
-                # Yesterday
-                return "Yesterday"
-            elif diff.days < 7:
-                # This week - show day name
-                return dt.strftime("%A")
-            else:
-                # Older - show date
-                return dt.strftime("%m/%d")
-        except:
-            return str(timestamp)
-
-@Gtk.Template(resource_path='/io/github/tobagin/Karere/karere.ui')
+@Gtk.Template(resource_path=f'/{APP_ID.replace(".", "/")}/ui/window.ui')
 class KarereWindow(Adw.ApplicationWindow):
     __gtype_name__ = 'KarereWindow'
 
-    main_stack = Gtk.Template.Child()
+    split_view = Gtk.Template.Child()
+    navigation_view = Gtk.Template.Child()
     chat_list_box = Gtk.Template.Child()
-    qr_image = Gtk.Template.Child()
-    qr_spinner = Gtk.Template.Child()
-    message_stack = Gtk.Template.Child()
-    messages_list_box = Gtk.Template.Child()
-    chat_title_label = Gtk.Template.Child()
-    message_entry = Gtk.Template.Child()
-    send_button = Gtk.Template.Child()
-    messages_scrolled = Gtk.Template.Child()
     search_bar = Gtk.Template.Child()
     search_entry = Gtk.Template.Child()
     search_button = Gtk.Template.Child()
-    typing_revealer = Gtk.Template.Child()
-    typing_label = Gtk.Template.Child()
-    emoji_button = Gtk.Template.Child()
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._chat_rows = {}
         self._current_chat_jid = None
         self._message_history = {}  # Store message history per chat
+        self._chat_pages = {}  # Store navigation pages for each chat
+        self._typing_timeout = None
+        self._emoji_popover = None
+        self._current_emoji_page = None  # Track current page for emoji insertion
 
-        self.main_stack.set_visible_child_name('connecting_view')
-        self.qr_spinner.start()
+        # Verify template children are loaded
+        if not self.split_view:
+            raise RuntimeError("UI template failed to load - split_view is None")
+        if not self.navigation_view:
+            raise RuntimeError("UI template failed to load - navigation_view is None")
+
+        # Load individual page UI files and add them to navigation view
+        self._load_pages()
+
+        # Start with loading page and sidebar hidden
+        self.split_view.set_collapsed(True)  # Hide sidebar initially
+        self.navigation_view.push([self.loading_page])  # Show loading page
+        self.loading_spinner.start()
 
         # Connect signals
         self.chat_list_box.connect('row-selected', self.on_chat_selected)
-        self.send_button.connect('clicked', self.on_send_message)
-        self.message_entry.connect('activate', self.on_send_message)
 
         # Search functionality
         self.search_button.connect('toggled', self.on_search_toggled)
@@ -286,13 +209,70 @@ class KarereWindow(Adw.ApplicationWindow):
         # Set up search filtering
         self.chat_list_box.set_filter_func(self.filter_chat_row)
 
-        # Typing indicators
-        self.message_entry.connect('changed', self.on_message_entry_changed)
-        self._typing_timeout = None
+        # Initialize WebSocket client (will be set by main app)
+        self.websocket_client = None
 
-        # Emoji picker
-        self.emoji_button.connect('clicked', self.on_emoji_button_clicked)
-        self._emoji_popover = None
+    def _load_pages(self):
+        """Load individual page UI files from resources and add them to navigation view."""
+        builder = Gtk.Builder()
+
+        # Use the same dynamic resource path pattern
+        resource_base = f'/{APP_ID.replace(".", "/")}'
+
+        # Load loading page
+        builder.add_from_resource(f'{resource_base}/ui/pages/loading_page.ui')
+        self.loading_page = builder.get_object('loading_page')
+        self.loading_spinner = builder.get_object('loading_spinner')
+
+        # Load QR page
+        builder.add_from_resource(f'{resource_base}/ui/pages/qr_page.ui')
+        self.qr_page = builder.get_object('qr_page')
+        print(type(self.qr_page))
+        self.qr_image = builder.get_object('qr_image')
+        print(type(self.qr_image))
+        self.qr_spinner = builder.get_object('qr_spinner')
+        print(type(self.qr_spinner))
+
+        # Load reconnecting page
+        builder.add_from_resource(f'{resource_base}/ui/pages/reconnecting_page.ui')
+        self.reconnecting_page = builder.get_object('reconnecting_page')
+        print(type(self.reconnecting_page))
+        self.reconnecting_spinner = builder.get_object('reconnecting_spinner')
+        print(type(self.reconnecting_spinner))
+
+        # Load welcome page
+        builder.add_from_resource(f'{resource_base}/ui/pages/welcome_page.ui')
+        self.welcome_page = builder.get_object('welcome_page')
+        print(type(self.welcome_page))
+
+        # Add all pages to the navigation view
+        # This makes them available for navigation but doesn't show them yet
+        self.navigation_view.add(self.loading_page)
+        self.navigation_view.add(self.qr_page)
+        self.navigation_view.add(self.reconnecting_page)
+        self.navigation_view.add(self.welcome_page)
+
+        print("All pages loaded and added to navigation view")
+
+    def _remove_temporary_pages(self):
+        """Remove temporary pages (loading, QR, reconnecting) from navigation view.
+
+        This is called after successful connection to clean up the navigation stack.
+        The welcome page and any chat pages will remain accessible.
+        """
+        try:
+            # Remove pages from navigation view
+            # Note: We keep them in the UI structure but remove from navigation stack
+            # so they can't be navigated back to
+            pages_to_remove = [self.loading_page, self.qr_page, self.reconnecting_page]
+            for page in pages_to_remove:
+                try:
+                    self.navigation_view.remove(page)
+                    print(f"Removed page: {page.get_title()}")
+                except Exception as e:
+                    print(f"Could not remove page {page.get_title()}: {e}")
+        except Exception as e:
+            print(f"Error removing temporary pages: {e}")
 
     def on_chat_selected(self, list_box, row):
         """Handle chat selection from the chat list."""
@@ -303,40 +283,202 @@ class KarereWindow(Adw.ApplicationWindow):
         jid = chat_row.jid
         self._current_chat_jid = jid
 
-        # Update chat title
-        display_name = self.get_display_name(jid)
-        self.chat_title_label.set_label(display_name)
+        # Navigate to existing page (should already exist from add_or_update_chat)
+        if jid in self._chat_pages:
+            chat_page = self._chat_pages[jid]
+            print(f"DEBUG: Navigating to existing page for {jid}")
 
-        # Switch to message view
-        self.message_stack.set_visible_child_name('message_view')
+            # Check if this page is already the visible page
+            visible_page = self.navigation_view.get_visible_page()
+            print(f"DEBUG: Current visible page: {visible_page}")
+            print(f"DEBUG: Target page: {chat_page}")
+
+            if visible_page != chat_page:
+                # Simply push the chat page - AdwNavigationView will handle the navigation
+                try:
+                    self.navigation_view.push(chat_page)
+                    print(f"DEBUG: Successfully pushed target page")
+                except Exception as e:
+                    print(f"ERROR: Could not navigate to page: {e}")
+            else:
+                print(f"DEBUG: Target page is already visible")
+        else:
+            print(f"ERROR: No navigation page found for {jid}")
 
         # Load message history for this chat
         self.load_message_history(jid)
 
-        # Focus message entry
-        self.message_entry.grab_focus()
-
         print(f"Selected chat: {jid}")
 
-    def on_send_message(self, widget):
-        """Handle sending a message."""
-        if not self._current_chat_jid:
-            return
+    def create_chat_page(self, jid):
+        """Create a navigation page for a chat."""
+        display_name = self.get_display_name(jid)
 
-        message_text = self.message_entry.get_text().strip()
+        # Create the navigation page
+        page = Adw.NavigationPage()
+        page.set_title(display_name)
+        page.set_tag(f"chat-{jid}")
+
+        # Create the toolbar view
+        toolbar_view = Adw.ToolbarView()
+
+        # Create header bar
+        header_bar = Adw.HeaderBar()
+        header_bar.set_title_widget(Gtk.Label(label=display_name))
+        toolbar_view.add_top_bar(header_bar)
+
+        # Create main content box
+        content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+
+        # Create messages area
+        messages_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        messages_box.set_vexpand(True)
+
+        # Create scrolled window for messages
+        messages_scrolled = Gtk.ScrolledWindow()
+        messages_scrolled.set_vexpand(True)
+        messages_scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+
+        # Create messages list box
+        messages_list_box = Gtk.ListBox()
+        messages_list_box.set_selection_mode(Gtk.SelectionMode.NONE)
+        messages_list_box.add_css_class("background")
+
+        messages_scrolled.set_child(messages_list_box)
+        messages_box.append(messages_scrolled)
+
+        # Create typing indicator
+        typing_revealer = Gtk.Revealer()
+        typing_revealer.set_reveal_child(False)
+        typing_revealer.set_transition_type(Gtk.RevealerTransitionType.SLIDE_UP)
+
+        typing_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        typing_box.set_margin_start(12)
+        typing_box.set_margin_end(12)
+        typing_box.set_margin_top(4)
+        typing_box.set_margin_bottom(4)
+
+        typing_spinner = Gtk.Spinner()
+        typing_spinner.set_spinning(True)
+        typing_spinner.set_size_request(16, 16)
+
+        typing_label = Gtk.Label(label="typing...")
+        typing_label.add_css_class("dim-label")
+        typing_label.add_css_class("caption")
+
+        typing_box.append(typing_spinner)
+        typing_box.append(typing_label)
+        typing_revealer.set_child(typing_box)
+
+        messages_box.append(typing_revealer)
+        content_box.append(messages_box)
+
+        # Create message input area
+        input_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        input_box.set_margin_start(12)
+        input_box.set_margin_end(12)
+        input_box.set_margin_top(8)
+        input_box.set_margin_bottom(12)
+
+        # Message entry
+        message_entry = Gtk.Entry()
+        message_entry.set_hexpand(True)
+        message_entry.set_placeholder_text("Type a message...")
+
+        # Emoji button
+        emoji_button = Gtk.Button()
+        emoji_button.set_icon_name("face-smile-symbolic")
+        emoji_button.set_tooltip_text("Add emoji")
+        emoji_button.add_css_class("flat")
+        emoji_button.add_css_class("circular")
+
+        # Send button
+        send_button = Gtk.Button()
+        send_button.set_icon_name("mail-send-symbolic")
+        send_button.set_tooltip_text("Send message")
+        send_button.add_css_class("suggested-action")
+        send_button.add_css_class("circular")
+
+        input_box.append(message_entry)
+        input_box.append(emoji_button)
+        input_box.append(send_button)
+        content_box.append(input_box)
+
+        toolbar_view.set_content(content_box)
+        page.set_child(toolbar_view)
+
+        # Store references for this chat
+        page.messages_list_box = messages_list_box
+        page.messages_scrolled = messages_scrolled
+        page.message_entry = message_entry
+        page.send_button = send_button
+        page.emoji_button = emoji_button
+        page.typing_revealer = typing_revealer
+        page.typing_label = typing_label
+        page.jid = jid
+
+        # Connect signals
+        send_button.connect('clicked', self.on_send_message_for_page, page)
+        message_entry.connect('activate', self.on_send_message_for_page, page)
+        message_entry.connect('changed', self.on_message_entry_changed_for_page, page)
+        emoji_button.connect('clicked', self.on_emoji_button_clicked_for_page, page)
+
+        return page
+
+    def on_send_message_for_page(self, widget, page):
+        """Handle sending a message from a specific chat page."""
+        jid = page.jid
+        message_text = page.message_entry.get_text().strip()
         if not message_text:
             return
 
         # Clear the entry
-        self.message_entry.set_text("")
+        page.message_entry.set_text("")
 
         # Add message to UI immediately (optimistic update)
-        self.add_message_to_chat(self._current_chat_jid, message_text, is_from_me=True)
+        self.add_message_to_chat_page(page, message_text, is_from_me=True)
 
         # Send message to backend
-        self.send_message_to_backend(self._current_chat_jid, message_text)
+        self.send_message_to_backend(jid, message_text)
 
-        print(f"Sending message to {self._current_chat_jid}: {message_text}")
+        print(f"Sending message to {jid}: {message_text}")
+
+    def on_message_entry_changed_for_page(self, entry, page):
+        """Handle message entry text changes for typing indicators."""
+        from gi.repository import GLib
+
+        # Cancel previous timeout
+        if self._typing_timeout:
+            GLib.source_remove(self._typing_timeout)
+            self._typing_timeout = None
+
+        text = entry.get_text()
+        jid = page.jid
+        if text and jid:
+            # Send typing indicator to backend
+            app = self.get_application()
+            if app and app.ws_client:
+                app.ws_client.send_command('typing_start', {
+                    'to': jid
+                })
+
+            # Set timeout to stop typing indicator
+            self._typing_timeout = GLib.timeout_add_seconds(3, self._stop_typing_timeout)
+        else:
+            # Send stop typing to backend immediately
+            self._send_stop_typing()
+
+    def on_emoji_button_clicked_for_page(self, button, page):
+        """Handle emoji button click for a specific page."""
+        if self._emoji_popover is None:
+            self._create_emoji_popover()
+
+        self._emoji_popover.set_parent(button)
+        self._emoji_popover.popup()
+        # Store current page for emoji insertion
+        self._current_emoji_page = page
+
+
 
     def get_display_name(self, jid):
         """Get a display name for a JID (phone number)."""
@@ -351,26 +493,43 @@ class KarereWindow(Adw.ApplicationWindow):
         return jid
 
     def add_or_update_chat(self, jid, last_message, timestamp=None, unread_count=0):
+        print(f"DEBUG: add_or_update_chat called with jid={jid}, last_message='{last_message}'")
         if jid in self._chat_rows:
+            print(f"DEBUG: Updating existing chat row for {jid}")
             self._chat_rows[jid].update_last_message(last_message, timestamp)
             if unread_count > 0:
                 self._chat_rows[jid].update_unread_count(unread_count)
         else:
+            print(f"DEBUG: Creating new chat row for {jid}")
             new_row = ChatRow(jid, last_message, timestamp, unread_count)
             self._chat_rows[jid] = new_row
             self.chat_list_box.prepend(new_row)
+            print(f"DEBUG: Added chat row to list box. Total chat rows: {len(self._chat_rows)}")
+
+            # Force visibility
+            new_row.set_visible(True)
+            print(f"DEBUG: Chat row visibility set to True")
+
+            # Create navigation page for this chat but don't push it yet
+            print(f"DEBUG: Creating navigation page for {jid}")
+            chat_page = self.create_chat_page(jid)
+            self._chat_pages[jid] = chat_page
+            print(f"DEBUG: Navigation page created for {jid} (not pushed yet)")
 
         # If this is the currently selected chat, add the message to the view
         if jid == self._current_chat_jid:
             self.add_message_to_chat(jid, last_message, is_from_me=False)
 
     def show_reconnecting_view(self):
-        """Switches the stack to the reconnecting view."""
-        self.main_stack.set_visible_child_name('reconnecting_view')
+        """Switches to the reconnecting page."""
+        self.navigation_view.pop_to_page(self.reconnecting_page)
+        self.reconnecting_spinner.start()
         print("Switched to reconnecting view.")
 
     def show_qr_view(self):
-        self.main_stack.set_visible_child_name('qr_view')
+        """Switches to the QR code page."""
+        self.navigation_view.pop_to_page(self.qr_page)
+        self.qr_spinner.start()
         print("Switched to QR view.")
 
     def show_qr_code(self, qr_data_url):
@@ -389,8 +548,47 @@ class KarereWindow(Adw.ApplicationWindow):
         print("QR Code displayed.")
 
     def show_chat_view(self):
-        self.main_stack.set_visible_child_name('chat_view')
-        print("Switched to chat view.")
+        """Enable sidebar and switch to welcome page."""
+        print("Enabling sidebar and switching to chat view.")
+
+        # Enable sidebar (show chat list)
+        self.split_view.set_collapsed(False)
+
+        # Switch to welcome page
+        self.navigation_view.push(self.welcome_page)
+        print("Switched to chat view with welcome page.")
+
+        # Remove the temporary pages (loading, QR, reconnecting) from navigation stack
+        # They will remain in the UI but won't be accessible via back navigation
+        self._remove_temporary_pages()
+
+        # Debug: Check if chat list box is visible and has children
+        print(f"DEBUG: Chat list box visible: {self.chat_list_box.get_visible()}")
+        print(f"DEBUG: Chat list box parent: {self.chat_list_box.get_parent()}")
+
+        # Debug: Check split view properties
+        print(f"DEBUG: Split view visible: {self.split_view.get_visible()}")
+        print(f"DEBUG: Split view collapsed: {self.split_view.get_collapsed()}")
+        print(f"DEBUG: Split view show-content: {self.split_view.get_show_content()}")
+
+        # Count children in chat list box
+        child_count = 0
+        child = self.chat_list_box.get_first_child()
+        while child:
+            child_count += 1
+            print(f"DEBUG: Chat list child {child_count}: {type(child).__name__}, visible: {child.get_visible()}")
+            child = child.get_next_sibling()
+        print(f"DEBUG: Total children in chat list box: {child_count}")
+        print(f"DEBUG: Total chat rows in _chat_rows: {len(self._chat_rows)}")
+
+        # Debug: Check navigation view and welcome page
+        print(f"DEBUG: Navigation view visible: {self.navigation_view.get_visible()}")
+        print(f"DEBUG: Welcome page visible: {self.welcome_page.get_visible()}")
+        current_page = self.navigation_view.get_visible_page()
+        print(f"DEBUG: Current visible page in navigation view: {current_page}")
+        if current_page:
+            print(f"DEBUG: Current page title: {current_page.get_title()}")
+            print(f"DEBUG: Current page tag: {current_page.get_tag()}")
 
     def show_toast(self, message):
         toast_overlay = self.get_content()
@@ -410,30 +608,40 @@ class KarereWindow(Adw.ApplicationWindow):
         }
         self._message_history[jid].append(message_data)
 
-        # If this is the currently selected chat, add to UI
-        if jid == self._current_chat_jid:
-            status = 'sending' if is_from_me else None
-            message_row = MessageRow(
-                message_text,
-                is_from_me=is_from_me,
-                timestamp=message_data['timestamp'],
-                status=status
-            )
-            self.messages_list_box.append(message_row)
+        # If there's a page for this chat, add to UI
+        if jid in self._chat_pages:
+            page = self._chat_pages[jid]
+            self.add_message_to_chat_page(page, message_text, is_from_me)
 
-            # Scroll to bottom
-            self.scroll_to_bottom()
+    def add_message_to_chat_page(self, page, message_text, is_from_me=False):
+        """Add a message to a specific chat page."""
+        status = 'sending' if is_from_me else None
+        message_row = MessageRow(
+            message_text,
+            is_from_me=is_from_me,
+            timestamp=self.get_current_timestamp(),
+            status=status
+        )
+        page.messages_list_box.append(message_row)
+
+        # Scroll to bottom
+        self.scroll_to_bottom_for_page(page)
 
     def load_message_history(self, jid):
         """Load message history for a chat."""
+        if jid not in self._chat_pages:
+            return
+
+        page = self._chat_pages[jid]
+
         # Clear current messages
         while True:
-            row = self.messages_list_box.get_first_child()
+            row = page.messages_list_box.get_first_child()
             if row is None:
                 break
-            self.messages_list_box.remove(row)
+            page.messages_list_box.remove(row)
 
-        # Load messages from history
+        # Load messages from local history first
         if jid in self._message_history:
             for message_data in self._message_history[jid]:
                 status = message_data.get('status', 'sent' if message_data['is_from_me'] else None)
@@ -443,21 +651,129 @@ class KarereWindow(Adw.ApplicationWindow):
                     timestamp=message_data['timestamp'],
                     status=status
                 )
-                self.messages_list_box.append(message_row)
+                page.messages_list_box.append(message_row)
+
+        # Request message history from backend
+        app = self.get_application()
+        if app and app.ws_client:
+            app.ws_client.send_command('get_message_history', {
+                'jid': jid,
+                'limit': 50,
+                'offset': 0
+            })
 
         # Scroll to bottom
-        self.scroll_to_bottom()
+        self.scroll_to_bottom_for_page(page)
 
-    def scroll_to_bottom(self):
-        """Scroll the message view to the bottom."""
+    def scroll_to_bottom_for_page(self, page):
+        """Scroll the message view to the bottom for a specific page."""
         def do_scroll():
-            vadj = self.messages_scrolled.get_vadjustment()
+            vadj = page.messages_scrolled.get_vadjustment()
             vadj.set_value(vadj.get_upper() - vadj.get_page_size())
             return False
 
         # Use idle_add to ensure the UI is updated first
         from gi.repository import GLib
         GLib.idle_add(do_scroll)
+
+    def load_message_history_from_backend(self, jid, messages):
+        """Load message history received from backend."""
+        if jid not in self._chat_pages:
+            return
+
+        page = self._chat_pages[jid]
+        print(f"Loading {len(messages)} messages for {jid}")
+
+        # Clear current messages in UI
+        while True:
+            row = page.messages_list_box.get_first_child()
+            if row is None:
+                break
+            page.messages_list_box.remove(row)
+
+        # Clear local message history for this chat
+        self._message_history[jid] = []
+
+        # Process and add messages from backend
+        for msg in messages:
+            # Convert timestamp to readable format
+            timestamp = self.format_timestamp(msg.get('timestamp'))
+
+            # Store in local history
+            message_data = {
+                'text': msg['text'],
+                'is_from_me': msg['fromMe'],
+                'timestamp': timestamp,
+                'status': msg.get('status', 'sent' if msg['fromMe'] else None)
+            }
+            self._message_history[jid].append(message_data)
+
+            # Add to UI
+            message_row = MessageRow(
+                msg['text'],
+                is_from_me=msg['fromMe'],
+                timestamp=timestamp,
+                status=message_data['status']
+            )
+            print(f"Created MessageRow: text='{msg['text']}', from_me={msg['fromMe']}")
+            message_row.set_visible(True)
+            page.messages_list_box.append(message_row)
+            print(f"Added MessageRow to list box")
+
+        # If no messages from backend, add a simple test widget
+        if len(messages) == 0:
+            print(f"No messages found for {jid}, adding simple test widget")
+
+            # Create a simple test widget
+            test_row = Gtk.ListBoxRow()
+            test_label = Gtk.Label(label="TEST MESSAGE - This should be visible!")
+            test_label.set_size_request(300, 50)
+            test_label.set_visible(True)
+            test_row.set_child(test_label)
+            test_row.set_visible(True)
+            test_row.set_selectable(False)
+
+            page.messages_list_box.append(test_row)
+            print(f"Added simple test widget to messages_list_box")
+
+            # Also try the original MessageRow
+            sample_message = {
+                'text': 'This is a sample message to test the message display',
+                'is_from_me': False,
+                'timestamp': self.get_current_timestamp(),
+                'status': None
+            }
+            self._message_history[jid] = [sample_message]
+
+            message_row = MessageRow(
+                sample_message['text'],
+                is_from_me=sample_message['is_from_me'],
+                timestamp=sample_message['timestamp'],
+                status=sample_message['status']
+            )
+            print(f"Created sample MessageRow: text='{sample_message['text']}'")
+            message_row.set_visible(True)
+            page.messages_list_box.append(message_row)
+            print(f"Added sample message row to messages_list_box")
+
+        # Scroll to bottom
+        self.scroll_to_bottom_for_page(page)
+
+    def format_timestamp(self, timestamp):
+        """Format timestamp from backend to readable format."""
+        if timestamp:
+            try:
+                from datetime import datetime
+                # Convert from milliseconds to seconds if needed
+                if timestamp > 1e12:  # Likely milliseconds
+                    timestamp = timestamp / 1000
+                dt = datetime.fromtimestamp(timestamp)
+                return dt.strftime("%H:%M")
+            except (ValueError, TypeError):
+                pass
+        return self.get_current_timestamp()
+
+
 
     def get_current_timestamp(self):
         """Get current timestamp as a formatted string."""
@@ -510,41 +826,7 @@ class KarereWindow(Adw.ApplicationWindow):
                 search_text in last_message or
                 search_text in chat_row.jid.lower())
 
-    def show_typing_indicator(self, contact_name=None):
-        """Show typing indicator."""
-        if contact_name:
-            self.typing_label.set_label(f"{contact_name} is typing...")
-        else:
-            self.typing_label.set_label("typing...")
-        self.typing_revealer.set_reveal_child(True)
 
-    def hide_typing_indicator(self):
-        """Hide typing indicator."""
-        self.typing_revealer.set_reveal_child(False)
-
-    def on_message_entry_changed(self, entry):
-        """Handle message entry text changes for typing indicators."""
-        from gi.repository import GLib
-
-        # Cancel previous timeout
-        if self._typing_timeout:
-            GLib.source_remove(self._typing_timeout)
-            self._typing_timeout = None
-
-        text = entry.get_text()
-        if text and self._current_chat_jid:
-            # Send typing indicator to backend
-            app = self.get_application()
-            if app and app.ws_client:
-                app.ws_client.send_command('typing_start', {
-                    'to': self._current_chat_jid
-                })
-
-            # Set timeout to stop typing indicator
-            self._typing_timeout = GLib.timeout_add_seconds(3, self._stop_typing_timeout)
-        else:
-            # Send stop typing to backend immediately
-            self._send_stop_typing()
 
     def _stop_typing_timeout(self):
         """Timeout callback to stop typing indicator."""
@@ -561,13 +843,7 @@ class KarereWindow(Adw.ApplicationWindow):
                     'to': self._current_chat_jid
                 })
 
-    def on_emoji_button_clicked(self, button):
-        """Handle emoji button click."""
-        if self._emoji_popover is None:
-            self._create_emoji_popover()
 
-        self._emoji_popover.set_parent(button)
-        self._emoji_popover.popup()
 
     def _create_emoji_popover(self):
         """Create the emoji picker popover."""
@@ -611,14 +887,22 @@ class KarereWindow(Adw.ApplicationWindow):
 
     def on_emoji_selected(self, button, emoji):
         """Handle emoji selection."""
+        # Use the current emoji page if available
+        if hasattr(self, '_current_emoji_page') and self._current_emoji_page:
+            page = self._current_emoji_page
+            entry = page.message_entry
+        else:
+            # Fallback - shouldn't happen with navigation pages
+            return
+
         # Insert emoji at cursor position
-        current_text = self.message_entry.get_text()
-        cursor_pos = self.message_entry.get_position()
+        current_text = entry.get_text()
+        cursor_pos = entry.get_position()
 
         new_text = current_text[:cursor_pos] + emoji + current_text[cursor_pos:]
-        self.message_entry.set_text(new_text)
-        self.message_entry.set_position(cursor_pos + len(emoji))
+        entry.set_text(new_text)
+        entry.set_position(cursor_pos + len(emoji))
 
         # Close popover and focus entry
         self._emoji_popover.popdown()
-        self.message_entry.grab_focus()
+        entry.grab_focus()

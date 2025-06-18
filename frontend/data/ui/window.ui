@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <requires lib="adw" version="1.0"/>
+  <template class="KarereWindow" parent="AdwApplicationWindow">
+    <property name="default-width">1200</property>
+    <property name="default-height">800</property>
+    <property name="title">Karere</property>
+    <property name="content">
+      <object class="AdwToastOverlay" id="toast_overlay">
+        <property name="child">
+          <object class="AdwNavigationSplitView" id="split_view">
+            <property name="show-content">true</property>
+            <property name="collapsed">true</property>
+            <property name="sidebar-width-fraction">0.3</property>
+            <property name="sidebar">
+              <object class="GtkBox" id="sidebar_content">
+                <property name="orientation">vertical</property>
+                <property name="hexpand">true</property>
+                <property name="vexpand">true</property>
+                <child>
+                  <object class="AdwHeaderBar" id="sidebar_header">
+                    <property name="title-widget">
+                      <object class="GtkLabel">
+                        <property name="label">Chats</property>
+                      </object>
+                    </property>
+                    <child type="end">
+                      <object class="GtkToggleButton" id="search_button">
+                        <property name="icon-name">system-search-symbolic</property>
+                        <property name="tooltip-text">Search chats</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkSearchBar" id="search_bar">
+                    <property name="child">
+                      <object class="GtkSearchEntry" id="search_entry">
+                        <property name="placeholder-text">Search chats...</property>
+                      </object>
+                    </property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkListBox" id="chat_list_box">
+                    <property name="selection-mode">single</property>
+                    <property name="hexpand">true</property>
+                    <property name="vexpand">true</property>
+                    <property name="hscrollbar-policy">never</property>
+                    <property name="vscrollbar-policy">automatic</property>
+                    <child>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </property>
+            <property name="content">
+              <object class="GtkBox" id="main_content">
+                <property name="orientation">vertical</property>
+                <child>
+                  <object class="AdwHeaderBar" id="main_header">
+                    <property name="title-widget">
+                      <object class="AdwWindowTitle">
+                        <property name="title">Karere</property>
+                        <property name="subtitle">WhatsApp Gtk4 Client</property>
+                      </object>
+                    </property>
+                  </object>
+                </child>
+                <child>
+                  <object class="AdwNavigationView" id="navigation_view">
+                    <property name="hexpand">true</property>
+                    <property name="vexpand">true</property>
+                    <property name="hscrollbar-policy">never</property>
+                    <property name="vscrollbar-policy">automatic</property>
+
+                  </object>
+                </child>
+              </object>
+            </property>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+</interface>

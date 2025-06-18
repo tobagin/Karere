@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.tobagin.Karere.Devel</id>
+  
+  <name>Karere</name>
+  <summary>A WhatsApp client for the Linux Desktop</summary>
+  
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  
+  <description>
+    <p>
+      Karere allows you to use WhatsApp on your Linux desktop, built with Python and GTK.
+    </p>
+  </description>
+  
+  <launchable type="desktop-id">io.github.tobagin.Karere.desktop</launchable>
+  
+  <releases>
+    <release version="0.1.0" date="2024-05-21">
+      <description>
+        <p>Initial release.</p>
+      </description>
+    </release>
+  </releases>
+  
+  <content_rating type="oars-1.1" />
+</component>

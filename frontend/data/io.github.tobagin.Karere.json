@@ -1,7 +1,7 @@
 {
     "app-id": "io.github.tobagin.Karere",
     "runtime": "org.gnome.Platform",
-    "runtime-version": "47",
+    "runtime-version": "48",
     "sdk": "org.gnome.Sdk",
     "command": "karere",
     "finish-args": [

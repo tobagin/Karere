@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <requires lib="adw" version="1.0"/>
+  <menu id="main_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">New Chat</attribute>
+        <attribute name="action">app.new-chat</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">New Group</attribute>
+        <attribute name="action">app.new-group</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Settings</attribute>
+        <attribute name="action">app.settings</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">About Karere</attribute>
+        <attribute name="action">app.about</attribute>
+      </item>
+    </section>
+  </menu>
+</interface>

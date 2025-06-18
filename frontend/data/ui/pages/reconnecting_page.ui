@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <requires lib="adw" version="1.0"/>
+  <object class="AdwNavigationPage" id="reconnecting_page">
+    <property name="title">Reconnecting</property>
+    <property name="child">
+      <object class="AdwToolbarView">
+        <child type="top">
+          <object class="AdwHeaderBar" id="reconnecting_header">
+            <property name="title-widget">
+              <object class="GtkLabel">
+                <property name="label">Reconnecting</property>
+              </object>
+            </property>
+          </object>
+        </child>
+        <property name="content">
+          <object class="AdwStatusPage">
+            <property name="title">Reconnecting to WhatsApp</property>
+            <property name="description">Connection lost. Attempting to reconnect...</property>
+            <property name="icon-name">network-wireless-offline-symbolic</property>
+            <child>
+              <object class="GtkSpinner" id="reconnecting_spinner">
+                <property name="spinning">true</property>
+                <property name="width-request">48</property>
+                <property name="height-request">48</property>
+              </object>
+            </child>
+          </object>
+        </property>
+      </object>
+    </property>
+  </object>
+</interface>

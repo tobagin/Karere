@@ -13,12 +13,48 @@ from pathlib import Path
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 
-from gi.repository import Gtk, Adw, Gio, GLib
+from gi.repository import Gtk, Adw, Gio, GLib, Gdk
 
 # Add the current directory to Python path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from websocket_client import WebSocketClient
+
+# Dynamic app ID for Flatpak compatibility
+# This will be automatically detected at runtime, but we need a default for resource paths
+APP_ID = os.environ.get('FLATPAK_ID', 'io.github.tobagin.Karere')
+
+# Load resources early, before any template decorators are evaluated
+def _load_resources_early():
+    """Load GResource files before any modules with template decorators are imported."""
+    resource_locations = [
+        # Flatpak paths
+        '/app/share/karere/karere-resources.gresource',
+        # Development paths
+        'karere-resources.gresource',
+        'frontend/karere-resources.gresource',
+        '../frontend/karere-resources.gresource',
+        os.path.join(os.path.dirname(__file__), '..', '..', 'builddir', 'frontend', 'karere-resources.gresource'),
+        # System installation paths
+        '/usr/share/karere/karere-resources.gresource',
+        '/usr/local/share/karere/karere-resources.gresource',
+    ]
+
+    for location in resource_locations:
+        if os.path.exists(location):
+            try:
+                res = Gio.Resource.load(location)
+                Gio.resources_register(res)
+                print(f"Resources loaded early from: {location}")
+                return True
+            except Exception as e:
+                print(f"Failed to load resources from {location}: {e}")
+
+    print("WARNING: No resource file found during early loading")
+    return False
+
+# Load resources immediately
+_load_resources_early()
 
 class KarereApplication(Adw.Application):
     """The main Karere Application class."""
@@ -40,10 +76,16 @@ class KarereApplication(Adw.Application):
 
         # Try to find the resource file in different locations
         resource_locations = [
+            # Flatpak paths
+            '/app/share/karere/karere-resources.gresource',
+            # Development paths
             'karere-resources.gresource',
             'frontend/karere-resources.gresource',
             '../frontend/karere-resources.gresource',
-            os.path.join(os.path.dirname(__file__), '..', '..', 'builddir', 'frontend', 'karere-resources.gresource')
+            os.path.join(os.path.dirname(__file__), '..', '..', 'builddir', 'frontend', 'karere-resources.gresource'),
+            # System installation paths
+            '/usr/share/karere/karere-resources.gresource',
+            '/usr/local/share/karere/karere-resources.gresource',
         ]
 
         resource_file = None
@@ -70,6 +112,10 @@ class KarereApplication(Adw.Application):
         from window import KarereWindow
         if not self.win:
             self.win = KarereWindow(application=self)
+            self.load_css()
+            # Set up WebSocket client for the window
+            from websocket_client import WebSocketClient
+            self.win.websocket_client = WebSocketClient(self.win)
             self.setup_websocket()
         self.win.present()
 
@@ -185,8 +231,11 @@ class KarereApplication(Adw.Application):
     def on_connection_opened(self, _):
         """Handler for when the WebSocket connection to the backend is established."""
         print("WebSocket connection to backend service is open.")
-        if self.win.main_stack.get_visible_child_name() == 'reconnecting_view':
-            self.win.main_stack.set_visible_child_name('connecting_view')
+        # Check if we're currently on the reconnecting page and switch back to loading
+        if self.win and hasattr(self.win, 'navigation_view') and self.win.navigation_view:
+            current_page = self.win.navigation_view.get_visible_page()
+            if current_page == self.win.reconnecting_page:
+                self.win.navigation_view.replace([self.win.loading_page])
 
     def on_connection_closed(self, _):
         """Handler for when the connection to the backend is lost."""
@@ -198,8 +247,9 @@ class KarereApplication(Adw.Application):
         Now we request the initial chats.
         """
         print("Backend is ready. Switching to chat view and requesting chats.")
-        self.win.show_chat_view()
-        self.ws_client.send_command('get_initial_chats') # Request chats
+        if self.win:
+            self.win.show_chat_view()
+            self.ws_client.send_command('get_initial_chats') # Request chats
 
     def on_initial_chats(self, _, chats):
         """Handler for receiving the initial list of chats."""
@@ -224,21 +274,16 @@ class KarereApplication(Adw.Application):
     def on_message_history(self, _, jid, messages):
         """Handler for receiving message history."""
         print(f"Received {len(messages)} messages for {jid}")
-        # Process and display message history
-        for msg in messages:
-            self.win.add_message_to_chat(
-                jid,
-                msg['text'],
-                is_from_me=msg['fromMe']
-            )
+        # Load message history into the window
+        self.win.load_message_history_from_backend(jid, messages)
 
     def load_css(self):
         """Load CSS styling for the application."""
         try:
             css_provider = Gtk.CssProvider()
-            css_provider.load_from_resource('/io/github/tobagin/Karere/style.css')
+            css_provider.load_from_resource(f'/{APP_ID.replace(".", "/")}/style.css')
 
-            display = Gtk.Widget.get_default_display()
+            display = Gdk.Display.get_default()
             Gtk.StyleContext.add_provider_for_display(
                 display,
                 css_provider,

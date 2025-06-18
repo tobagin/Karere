@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <requires lib="adw" version="1.0"/>
+  <menu id="add_attachment_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Document</attribute>
+        <attribute name="action">add.document</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Photos &amp; Videos</attribute>
+        <attribute name="action">add.photos-videos</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Camera</attribute>
+        <attribute name="action">add.camera</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Audio</attribute>
+        <attribute name="action">add.audio</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Contact</attribute>
+        <attribute name="action">add.contact</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Poll</attribute>
+        <attribute name="action">add.poll</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Event</attribute>
+        <attribute name="action">add.event</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">New Sticker</attribute>
+        <attribute name="action">add.new-sticker</attribute>
+      </item>
+    </section>
+  </menu>
+</interface>

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <requires lib="adw" version="1.0"/>
+  <object class="AdwAboutDialog" id="about_dialog">
+    <property name="application-name">Karere</property>
+    <property name="application-icon">io.github.tobagin.karere</property>
+    <property name="version">1.0.0</property>
+    <property name="developer-name">Thiago Fernandes</property>
+    <property name="website">https://github.com/tobagin/Karere</property>
+    <property name="issue-url">https://github.com/tobagin/Karere/issues</property>
+    <property name="copyright">© 2025 Thiago Fernandes</property>
+    <property name="license-type">gpl-3-0</property>
+    <property name="comments">A modern WhatsApp client for Linux</property>
+    <property name="developers">Thiago Fernandes &lt;140509353+tobagin@users.noreply.github.com&gt;</property>
+    <property name="translator-credits" translatable="yes">translator-credits</property>
+  </object>
+</interface>

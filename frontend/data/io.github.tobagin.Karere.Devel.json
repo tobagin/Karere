@@ -1,9 +1,9 @@
 {
-    "app-id": "io.github.tobagin.Karere",
+    "app-id": "io.github.tobagin.Karere.Devel",
     "runtime": "org.gnome.Platform",
-    "runtime-version": "47",
+    "runtime-version": "48",
     "sdk": "org.gnome.Sdk",
-    "command": "io.github.tobagin.Karere",
+    "command": "karere",
     "finish-args": [
         "--share=network",
         "--share=ipc",

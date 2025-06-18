@@ -1,0 +1,1 @@
+option('app_id', type: 'string', value: 'io.github.tobagin.Karere', description: 'Application ID for Flatpak packaging')

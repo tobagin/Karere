@@ -1,12 +1,17 @@
 #!/bin/sh
 # This shebang line is ESSENTIAL.
 
-# We must explicitly set the PYTHONPATH for development.
-# `meson devenv` does not automatically add the source directory.
-# The @source_dir@ variable is replaced by Meson with the path to the 'frontend' directory.
-export PYTHONPATH="@source_dir@"
+# Set PYTHONPATH for both development and installed environments
+if [ -n "@source_dir@" ] && [ -d "@source_dir@" ]; then
+    # Development environment
+    export PYTHONPATH="@source_dir@"
+else
+    # Installed environment (Flatpak)
+    export PYTHONPATH="/app/share/karere"
+fi
 
-# The GSETTINGS_SCHEMA_DIR is handled by `meson devenv`.
+# Set FLATPAK_ID environment variable for dynamic resource paths
+export FLATPAK_ID="@app_id@"
 
 # Execute the main Python module.
 exec @python@ -m karere.main

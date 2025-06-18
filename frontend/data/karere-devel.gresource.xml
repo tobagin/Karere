@@ -1,7 +1,7 @@
 <!-- frontend/data/karere.gresource.xml -->
 <?xml version="1.0" encoding="UTF-8"?>
 <gresources>
-  <gresource prefix="/io/github/tobagin/Karere">
+  <gresource prefix="/io/github/tobagin/Karere/Devel">
     <!-- Main UI Files -->
     <file>ui/window.ui</file>
     <file>ui/chat_row.ui</file>
