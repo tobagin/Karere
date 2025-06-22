@@ -1,0 +1,120 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.NavigationPage download_progress_page {
+  title: "Downloading";
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar download_header {
+      title-widget: Label download_header_label {
+        label: "Downloading Data";
+      };
+    }
+
+    content: Adw.StatusPage download_status_page {
+      title: "Downloading your WhatsApp data";
+      description: "This may take a few minutes depending on your chat history...";
+      icon-name: "folder-download-symbolic";
+
+      child: Box {
+        orientation: vertical;
+        spacing: 24;
+        halign: center;
+        valign: center;
+
+        // Progress Bar
+        ProgressBar download_progress_bar {
+          width-request: 300;
+          height-request: 8;
+          show-text: true;
+          fraction: 0.0;
+        }
+
+        // Progress Details
+        Box {
+          orientation: vertical;
+          spacing: 8;
+          halign: center;
+
+          Label download_progress_label {
+            label: "Initializing...";
+            styles ["title-4"]
+          }
+
+          Label download_details_label {
+            label: "Please wait while we download your data";
+            styles ["dim-label"]
+          }
+        }
+
+        // Statistics Box
+        Box download_stats_box {
+          orientation: horizontal;
+          spacing: 24;
+          halign: center;
+          styles ["card"]
+          margin-start: 12;
+          margin-end: 12;
+          margin-top: 12;
+          margin-bottom: 12;
+
+          Box {
+            orientation: vertical;
+            spacing: 4;
+            halign: center;
+
+            Label chats_count_label {
+              label: "0";
+              styles ["title-2"]
+            }
+
+            Label {
+              label: "Chats";
+              styles ["dim-label"]
+            }
+          }
+
+          Box {
+            orientation: vertical;
+            spacing: 4;
+            halign: center;
+
+            Label messages_count_label {
+              label: "0";
+              styles ["title-2"]
+            }
+
+            Label {
+              label: "Messages";
+              styles ["dim-label"]
+            }
+          }
+
+          Box {
+            orientation: vertical;
+            spacing: 4;
+            halign: center;
+
+            Label avatars_count_label {
+              label: "0";
+              styles ["title-2"]
+            }
+
+            Label {
+              label: "Avatars";
+              styles ["dim-label"]
+            }
+          }
+        }
+
+        // Spinner for when no progress data is available
+        Spinner download_spinner {
+          spinning: true;
+          width-request: 32;
+          height-request: 32;
+        }
+      };
+    };
+  };
+}

@@ -1,0 +1,120 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.NavigationPage sync_progress_page {
+  title: "Syncing";
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar sync_header {
+      title-widget: Label sync_header_label {
+        label: "Syncing Data";
+      };
+    }
+
+    content: Adw.StatusPage sync_status_page {
+      title: "Syncing your WhatsApp data";
+      description: "Checking for new messages and updates...";
+      icon-name: "emblem-synchronizing-symbolic";
+
+      child: Box {
+        orientation: vertical;
+        spacing: 24;
+        halign: center;
+        valign: center;
+
+        // Progress Bar
+        ProgressBar sync_progress_bar {
+          width-request: 300;
+          height-request: 8;
+          show-text: true;
+          fraction: 0.0;
+        }
+
+        // Progress Details
+        Box {
+          orientation: vertical;
+          spacing: 8;
+          halign: center;
+
+          Label sync_progress_label {
+            label: "Starting sync...";
+            styles ["title-4"]
+          }
+
+          Label sync_details_label {
+            label: "Checking for updates";
+            styles ["dim-label"]
+          }
+        }
+
+        // Statistics Box
+        Box sync_stats_box {
+          orientation: horizontal;
+          spacing: 24;
+          halign: center;
+          styles ["card"]
+          margin-start: 12;
+          margin-end: 12;
+          margin-top: 12;
+          margin-bottom: 12;
+
+          Box {
+            orientation: vertical;
+            spacing: 4;
+            halign: center;
+
+            Label sync_chats_count_label {
+              label: "0";
+              styles ["title-2"]
+            }
+
+            Label {
+              label: "Updated Chats";
+              styles ["dim-label"]
+            }
+          }
+
+          Box {
+            orientation: vertical;
+            spacing: 4;
+            halign: center;
+
+            Label sync_messages_count_label {
+              label: "0";
+              styles ["title-2"]
+            }
+
+            Label {
+              label: "New Messages";
+              styles ["dim-label"]
+            }
+          }
+
+          Box {
+            orientation: vertical;
+            spacing: 4;
+            halign: center;
+
+            Label sync_contacts_count_label {
+              label: "0";
+              styles ["title-2"]
+            }
+
+            Label {
+              label: "Updated Contacts";
+              styles ["dim-label"]
+            }
+          }
+        }
+
+        // Spinner for when no progress data is available
+        Spinner sync_spinner {
+          spinning: true;
+          width-request: 32;
+          height-request: 32;
+        }
+      };
+    };
+  };
+}
