@@ -39,7 +39,7 @@ The Karere backend database has been significantly enhanced to properly handle c
 
 #### Improved Chat Data
 - Chats now include contact information in queries
-- Avatar paths and phone numbers included in chat data
+- Avatar base64 data and phone numbers included in chat data
 - Better contact name resolution (prefers contact name over chat name)
 
 #### New Methods
@@ -48,24 +48,23 @@ The Karere backend database has been significantly enhanced to properly handle c
 
 ### 4. Avatar Management System
 
-#### New Avatar Manager (`avatar-manager.js`)
-- Automatic avatar downloading from WhatsApp
-- Local avatar storage and caching
-- Avatar file management and cleanup
-- Support for multiple image formats (JPG, PNG, GIF, WebP)
+#### Base64 Avatar Storage
+- Avatars are stored as base64 data directly in the database
+- No file-based avatar storage or caching
+- Efficient storage and retrieval through database queries
+- Support for multiple image formats (JPG, PNG, GIF, WebP) as base64
 
 #### Key Features
-- `downloadAvatarFromWhatsApp(sock, jid)` - Download from WhatsApp
-- `getOrDownloadAvatar(sock, jid)` - Get cached or download new
-- `avatarExists(jid)` - Check if avatar is cached
-- `cleanup()` - Remove old avatar files
-- `getStats()` - Get avatar storage statistics
+- `updateContactAvatar(jid, avatarBase64)` - Store avatar as base64
+- `getContact(jid)` - Retrieve contact with avatar base64 data
+- Database-integrated avatar management
+- No file system dependencies for avatars
 
 ### 5. Contact Synchronization
 
 #### Background Sync
 - Automatic contact synchronization when chats load
-- Background avatar downloading for all contacts
+- Background avatar downloading as base64 data for all contacts
 - Rate-limited to avoid WhatsApp restrictions
 
 #### Manual Sync
@@ -121,17 +120,15 @@ const messages = await database.getMessagesWithSender(chatJid, 50);
 ### Avatar Management
 
 ```javascript
-// Download avatar from WhatsApp
-const avatarPath = await avatarManager.downloadAvatarFromWhatsApp(sock, jid);
+// Update contact avatar with base64 data
+await database.updateContactAvatar(jid, avatarBase64);
 
-// Get cached avatar or download if missing
-const avatarPath = await avatarManager.getOrDownloadAvatar(sock, jid);
+// Get contact with avatar base64 data
+const contact = await database.getContact(jid);
+const avatarBase64 = contact?.avatar_base64;
 
-// Check if avatar exists
-const exists = avatarManager.avatarExists(jid);
-
-// Get avatar statistics
-const stats = avatarManager.getStats();
+// Save contact with avatar during initial save
+await database.saveContact(jid, name, phoneNumber, avatarBase64);
 ```
 
 ### Enhanced Chat Data
@@ -139,7 +136,7 @@ const stats = avatarManager.getStats();
 ```javascript
 // Get chats with contact information
 const chats = await database.getChats(50);
-// Returns: jid, name, contact_name, contact_avatar_path, contact_phone_number, etc.
+// Returns: jid, name, contact_name, contact_avatar_base64, contact_phone_number, etc.
 
 // Get specific chat with contact details
 const chat = await database.getChatWithContact(jid);
@@ -195,7 +192,7 @@ CREATE TABLE contacts (
     jid TEXT PRIMARY KEY,
     name TEXT,
     phone_number TEXT,
-    avatar_path TEXT,           -- New: Local avatar file path
+    avatar_base64 TEXT,         -- Avatar stored as base64 data
     is_blocked BOOLEAN DEFAULT FALSE,
     created_at INTEGER DEFAULT (strftime('%s', 'now')),
     updated_at INTEGER DEFAULT (strftime('%s', 'now'))

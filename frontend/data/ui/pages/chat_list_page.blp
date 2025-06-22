@@ -7,13 +7,15 @@ template $KarereChatListPage : Adw.NavigationPage {
   child: Box {
     orientation: vertical;
 
-    HeaderBar {
+    Adw.HeaderBar {
       [start]
       MenuButton {
         icon-name: "open-menu-symbolic";
         tooltip-text: _("Main menu");
       }
 
+
+      show-end-title-buttons: false;
       title-widget: Adw.WindowTitle {
         title: _("Chats");
         subtitle: _("User Complete Name");

@@ -288,7 +288,7 @@ class KarereApplication(Adw.Application):
                 avatar_base64
             )
 
-    def on_new_message(self, _, from_jid, body, timestamp=None, contact_name=None, avatar_path=None):
+    def on_new_message(self, _, from_jid, body, timestamp=None, contact_name=None, avatar_base64=None):
         print(f"New message from {from_jid}: {body}")
         # Use provided timestamp or current time
         if timestamp is None:
@@ -296,8 +296,8 @@ class KarereApplication(Adw.Application):
             timestamp = time.time() * 1000
 
         # Don't pass 'None' string, pass actual None
-        if avatar_path == 'None':
-            avatar_path = None
+        if avatar_base64 == 'None':
+            avatar_base64 = None
 
         # Use contact name if provided, otherwise format phone number
         if contact_name and contact_name != from_jid:
@@ -305,7 +305,7 @@ class KarereApplication(Adw.Application):
         else:
             display_name = self.format_phone_number(from_jid)
 
-        self.win.add_or_update_chat(from_jid, body, timestamp, 0, display_name, avatar_path)
+        self.win.add_or_update_chat(from_jid, body, timestamp, 0, display_name, avatar_base64)
 
     def on_message_sent(self, _, to_jid, message):
         """Handler for when a message is successfully sent."""
@@ -389,10 +389,10 @@ class KarereApplication(Adw.Application):
             last_message = chat.get('lastMessage', 'No messages yet')
             timestamp = chat.get('timestamp')
             unread_count = chat.get('unreadCount', 0)
-            avatar_path = chat.get('avatarPath')
+            avatar_base64 = chat.get('avatarBase64')
             # Don't pass 'None' string, pass actual None
-            if avatar_path == 'None':
-                avatar_path = None
+            if avatar_base64 == 'None':
+                avatar_base64 = None
 
             if jid:
                 # Use contact name if available and different from JID, otherwise use formatted phone number
@@ -401,7 +401,7 @@ class KarereApplication(Adw.Application):
                 else:
                     contact_name = self.format_phone_number(jid)
 
-                self.win.add_or_update_chat(jid, last_message, timestamp, unread_count, contact_name, avatar_path)
+                self.win.add_or_update_chat(jid, last_message, timestamp, unread_count, contact_name, avatar_base64)
 
     def _switch_to_chat_view_after_download(self):
         """Switch to chat view after download completion."""

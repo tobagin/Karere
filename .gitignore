@@ -27,9 +27,7 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Avatar storage (user data)
-data/avatars/
-backend/data/avatars/
+
 
 # Temporary and test files
 task-sample.md
