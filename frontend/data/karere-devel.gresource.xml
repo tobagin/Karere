@@ -3,27 +3,28 @@
 <gresources>
   <gresource prefix="/io/github/tobagin/Karere/Devel">
     <!-- Main UI Files -->
-    <file>ui/window.ui</file>
-    <file>ui/chat_row.ui</file>
+    <file>ui/window.blp</file>
+    <file>ui/chat_row.blp</file>
 
     <!-- Menu UI Files -->
-    <file>ui/menus/chat_row_menu.ui</file>
-    <file>ui/menus/chat_page_menu.ui</file>
-    <file>ui/menus/main_menu.ui</file>
-    <file>ui/menus/add_attachment_menu.ui</file>
+    <file>ui/menus/chat_row_menu.blp</file>
+    <file>ui/menus/chat_page_menu.blp</file>
+    <file>ui/menus/main_menu.blp</file>
+    <file>ui/menus/add_attachment_menu.blp</file>
 
     <!-- Page UI Files -->
-    <file>ui/pages/loading_page.ui</file>
-    <file>ui/pages/qr_page.ui</file>
-    <file>ui/pages/reconnecting_page.ui</file>
-    <file>ui/pages/welcome_page.ui</file>
-    <file>ui/pages/chat_page.ui</file>
-    <file>ui/pages/download_progress_page.ui</file>
-    <file>ui/pages/sync_progress_page.ui</file>
+    <file>ui/pages/loading_page.blp</file>
+    <file>ui/pages/qr_page.blp</file>
+    <file>ui/pages/reconnecting_page.blp</file>
+    <file>ui/pages/welcome_page.blp</file>
+    <file>ui/pages/chat_page.blp</file>
+    <file>ui/pages/chat_list_page.blp</file>
+    <file>ui/pages/download_progress_page.blp</file>
+    <file>ui/pages/sync_progress_page.blp</file>
 
     <!-- Dialog UI Files -->
-    <file>ui/dialogs/about.ui</file>
-    <file>ui/dialogs/settings.ui</file>
+    <file>ui/dialogs/about.blp</file>
+    <file>ui/dialogs/settings.blp</file>
 
     <!-- Styles -->
     <file>style.css</file>

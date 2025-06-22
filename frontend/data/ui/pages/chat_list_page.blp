@@ -14,18 +14,10 @@ template $KarereChatListPage : Adw.NavigationPage {
         tooltip-text: _("Main menu");
       }
 
-
-      show-end-title-buttons: false;
       title-widget: Adw.WindowTitle {
         title: _("Chats");
         subtitle: _("User Complete Name");
       };
-
-      [end]
-      ToggleButton search {
-        icon-name: "edit-find-symbolic";
-        tooltip-text: _("Search chats");
-      }
     }
 
     ActionBar {
@@ -37,6 +29,11 @@ template $KarereChatListPage : Adw.NavigationPage {
       Button contacts {
         tooltip-text: _("View contacts");
         icon-name: "org.gnome.Contacts-symbolic";
+      }
+
+      ToggleButton search {
+        icon-name: "edit-find-symbolic";
+        tooltip-text: _("Search chats");
       }
 
       MenuButton chats_menu {

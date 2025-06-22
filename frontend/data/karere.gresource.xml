@@ -3,28 +3,28 @@
 <gresources>
   <gresource prefix="/io/github/tobagin/Karere">
     <!-- Main UI Files -->
-    <file alias="ui/window.ui">window.ui</file>
-    <file alias="ui/chat_row.ui">chat_row.ui</file>
+    <file alias="ui/window.ui">ui/window.blp</file>
+    <file alias="ui/chat_row.ui">ui/chat_row.blp</file>
 
     <!-- Menu UI Files -->
-    <file alias="ui/menus/chat_row_menu.ui">chat_row_menu.ui</file>
-    <file alias="ui/menus/chat_page_menu.ui">chat_page_menu.ui</file>
-    <file alias="ui/menus/main_menu.ui">main_menu.ui</file>
-    <file alias="ui/menus/add_attachment_menu.ui">add_attachment_menu.ui</file>
+    <file alias="ui/menus/chat_row_menu.ui">ui/menus/chat_row_menu.blp</file>
+    <file alias="ui/menus/chat_page_menu.ui">ui/menus/chat_page_menu.blp</file>
+    <file alias="ui/menus/main_menu.ui">ui/menus/main_menu.blp</file>
+    <file alias="ui/menus/add_attachment_menu.ui">ui/menus/add_attachment_menu.blp</file>
 
     <!-- Page UI Files -->
-    <file alias="ui/pages/loading_page.ui">ui/pages/loading_page.ui</file>
-    <file alias="ui/pages/qr_page.ui">ui/pages/qr_page.ui</file>
-    <file alias="ui/pages/reconnecting_page.ui">ui/pages/reconnecting_page.ui</file>
-    <file alias="ui/pages/welcome_page.ui">ui/pages/welcome_page.ui</file>
-    <file alias="ui/pages/chat_page.ui">ui/pages/chat_page.ui</file>
-    <file alias="ui/pages/chat_list_page.ui">ui/pages/chat_list_page.ui</file>
-    <file alias="ui/pages/download_progress_page.ui">ui/pages/download_progress_page.ui</file>
-    <file alias="ui/pages/sync_progress_page.ui">ui/pages/sync_progress_page.ui</file>
+    <file alias="ui/pages/loading_page.ui">ui/pages/loading_page.blp</file>
+    <file alias="ui/pages/qr_page.ui">ui/pages/qr_page.blp</file>
+    <file alias="ui/pages/reconnecting_page.ui">ui/pages/reconnecting_page.blp</file>
+    <file alias="ui/pages/welcome_page.ui">ui/pages/welcome_page.blp</file>
+    <file alias="ui/pages/chat_page.ui">ui/pages/chat_page.blp</file>
+    <file alias="ui/pages/chat_list_page.ui">ui/pages/chat_list_page.blp</file>
+    <file alias="ui/pages/download_progress_page.ui">ui/pages/download_progress_page.blp</file>
+    <file alias="ui/pages/sync_progress_page.ui">ui/pages/sync_progress_page.blp</file>
 
     <!-- Dialog UI Files -->
-    <file alias="ui/dialogs/about.ui">about.ui</file>
-    <file alias="ui/dialogs/settings.ui">settings.ui</file>
+    <file alias="ui/dialogs/about.ui">ui/dialogs/about.blp</file>
+    <file alias="ui/dialogs/settings.ui">ui/dialogs/settings.blp</file>
 
     <!-- Styles -->
     <file>style.css</file>
