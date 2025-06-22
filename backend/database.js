@@ -57,8 +57,11 @@ class Database {
             `CREATE TABLE IF NOT EXISTS chats (
                 jid TEXT PRIMARY KEY,
                 name TEXT,
+                avatar_base64 TEXT,
                 last_message_id TEXT,
                 last_message_timestamp INTEGER,
+                last_message_type TEXT DEFAULT 'text',
+                last_message_from TEXT,
                 unread_count INTEGER DEFAULT 0,
                 is_archived BOOLEAN DEFAULT FALSE,
                 created_at INTEGER DEFAULT (strftime('%s', 'now')),
@@ -137,13 +140,37 @@ class Database {
     async runMigrations() {
         try {
             // Check if avatar_base64 column exists in contacts table
-            const tableInfo = await this.all("PRAGMA table_info(contacts)");
-            const hasAvatarBase64 = tableInfo.some(column => column.name === 'avatar_base64');
+            const contactsTableInfo = await this.all("PRAGMA table_info(contacts)");
+            const contactsHasAvatarBase64 = contactsTableInfo.some(column => column.name === 'avatar_base64');
 
-            if (!hasAvatarBase64) {
+            if (!contactsHasAvatarBase64) {
                 log.info('Adding avatar_base64 column to contacts table');
                 await this.run('ALTER TABLE contacts ADD COLUMN avatar_base64 TEXT');
-                log.info('Migration completed: avatar_base64 column added');
+                log.info('Migration completed: avatar_base64 column added to contacts');
+            }
+
+            // Check if avatar_base64 column exists in chats table
+            const chatsTableInfo = await this.all("PRAGMA table_info(chats)");
+            const chatsHasAvatarBase64 = chatsTableInfo.some(column => column.name === 'avatar_base64');
+            const chatsHasLastMessageType = chatsTableInfo.some(column => column.name === 'last_message_type');
+            const chatsHasLastMessageFrom = chatsTableInfo.some(column => column.name === 'last_message_from');
+
+            if (!chatsHasAvatarBase64) {
+                log.info('Adding avatar_base64 column to chats table');
+                await this.run('ALTER TABLE chats ADD COLUMN avatar_base64 TEXT');
+                log.info('Migration completed: avatar_base64 column added to chats');
+            }
+
+            if (!chatsHasLastMessageType) {
+                log.info('Adding last_message_type column to chats table');
+                await this.run('ALTER TABLE chats ADD COLUMN last_message_type TEXT DEFAULT \'text\'');
+                log.info('Migration completed: last_message_type column added to chats');
+            }
+
+            if (!chatsHasLastMessageFrom) {
+                log.info('Adding last_message_from column to chats table');
+                await this.run('ALTER TABLE chats ADD COLUMN last_message_from TEXT');
+                log.info('Migration completed: last_message_from column added to chats');
             }
         } catch (error) {
             log.warn('Migration failed', { error: error.message });
@@ -189,20 +216,20 @@ class Database {
     }
 
     // Chat operations
-    async saveChat(jid, name = null, lastMessageId = null, timestamp = null) {
+    async saveChat(jid, name = null, lastMessageId = null, timestamp = null, avatarBase64 = null, lastMessageType = 'text', lastMessageFrom = null) {
         const timer = performance.start('save_chat');
-        
+
         try {
             const sql = `
-                INSERT OR REPLACE INTO chats (jid, name, last_message_id, last_message_timestamp, updated_at)
-                VALUES (?, ?, ?, ?, strftime('%s', 'now'))
+                INSERT OR REPLACE INTO chats (jid, name, avatar_base64, last_message_id, last_message_timestamp, last_message_type, last_message_from, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now'))
             `;
-            
-            await this.run(sql, [jid, name, lastMessageId, timestamp]);
+
+            await this.run(sql, [jid, name, avatarBase64, lastMessageId, timestamp, lastMessageType, lastMessageFrom]);
             timer.end();
-            
-            log.debug('Chat saved', { jid, name });
-            
+
+            log.debug('Chat saved', { jid, name, hasAvatarBase64: !!avatarBase64, lastMessageType, lastMessageFrom });
+
         } catch (error) {
             timer.end({ error: true });
             throw errorHandler.database(error, 'saveChat');
@@ -216,7 +243,7 @@ class Database {
             const sql = `
                 SELECT c.*,
                        m.content as last_message_content,
-                       m.timestamp as last_message_timestamp,
+                       m.message_type as last_message_type_from_message,
                        m.from_me as last_message_from_me,
                        cont.name as contact_name,
                        cont.avatar_base64 as contact_avatar_base64,
@@ -247,7 +274,7 @@ class Database {
             const sql = `
                 SELECT c.*,
                        m.content as last_message_content,
-                       m.timestamp as last_message_timestamp,
+                       m.message_type as last_message_type_from_message,
                        m.from_me as last_message_from_me,
                        cont.name as contact_name,
                        cont.avatar_base64 as contact_avatar_base64,
@@ -269,6 +296,30 @@ class Database {
         }
     }
 
+    async updateChatAvatar(jid, avatarBase64) {
+        const timer = performance.start('update_chat_avatar');
+
+        try {
+            const sql = `
+                UPDATE chats
+                SET avatar_base64 = ?, updated_at = strftime('%s', 'now')
+                WHERE jid = ?
+            `;
+
+            const result = await this.run(sql, [avatarBase64, jid]);
+            timer.end({ updated: result.changes > 0 });
+
+            if (result.changes > 0) {
+                log.debug('Chat avatar updated', { jid, hasAvatarBase64: !!avatarBase64 });
+            }
+
+            return result.changes > 0;
+        } catch (error) {
+            timer.end({ error: true });
+            throw errorHandler.database(error, 'updateChatAvatar');
+        }
+    }
+
     // Message operations
     async saveMessage(id, chatJid, fromMe, content, timestamp, messageType = 'text', status = 'sent', senderName = null) {
         const timer = performance.start('save_message');
@@ -287,19 +338,22 @@ class Database {
             }
 
             // Update chat's last message and name if provided
+            // For last_message_from: if fromMe is true, use 'me', otherwise use the chatJid (sender's JID)
+            const lastMessageFrom = fromMe ? 'me' : chatJid;
+
             const chatUpdateSql = senderName && !fromMe ? `
                 UPDATE chats
-                SET last_message_id = ?, last_message_timestamp = ?, name = COALESCE(?, name), updated_at = strftime('%s', 'now')
+                SET last_message_id = ?, last_message_timestamp = ?, last_message_type = ?, last_message_from = ?, name = COALESCE(?, name), updated_at = strftime('%s', 'now')
                 WHERE jid = ?
             ` : `
                 UPDATE chats
-                SET last_message_id = ?, last_message_timestamp = ?, updated_at = strftime('%s', 'now')
+                SET last_message_id = ?, last_message_timestamp = ?, last_message_type = ?, last_message_from = ?, updated_at = strftime('%s', 'now')
                 WHERE jid = ?
             `;
 
             const chatUpdateParams = senderName && !fromMe ?
-                [id, timestamp, senderName, chatJid] :
-                [id, timestamp, chatJid];
+                [id, timestamp, messageType, lastMessageFrom, senderName, chatJid] :
+                [id, timestamp, messageType, lastMessageFrom, chatJid];
 
             await this.run(chatUpdateSql, chatUpdateParams);
 
@@ -389,6 +443,64 @@ class Database {
             log.debug('Message status updated', { messageId, status });
         } catch (error) {
             throw errorHandler.database(error, 'updateMessageStatus');
+        }
+    }
+
+    // Media operations
+    async saveMedia(id, messageId, filePath = null, fileName = null, fileSize = null, mimeType = null) {
+        const timer = performance.start('save_media');
+
+        try {
+            const sql = `
+                INSERT OR REPLACE INTO media (id, message_id, file_path, file_name, file_size, mime_type)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `;
+
+            await this.run(sql, [id, messageId, filePath, fileName, fileSize, mimeType]);
+            timer.end();
+
+            log.debug('Media saved', { id, messageId, fileName, fileSize });
+
+        } catch (error) {
+            timer.end({ error: true });
+            throw errorHandler.database(error, 'saveMedia');
+        }
+    }
+
+    async getMedia(messageId) {
+        const timer = performance.start('get_media');
+
+        try {
+            const sql = 'SELECT * FROM media WHERE message_id = ?';
+            const media = await this.all(sql, [messageId]);
+            timer.end({ messageId, count: media.length });
+
+            return media;
+        } catch (error) {
+            timer.end({ error: true });
+            throw errorHandler.database(error, 'getMedia');
+        }
+    }
+
+    async getAllMedia(limit = 1000) {
+        const timer = performance.start('get_all_media');
+
+        try {
+            const sql = `
+                SELECT m.*, msg.chat_jid, msg.timestamp
+                FROM media m
+                LEFT JOIN messages msg ON m.message_id = msg.id
+                ORDER BY msg.timestamp DESC
+                LIMIT ?
+            `;
+
+            const media = await this.all(sql, [limit]);
+            timer.end({ count: media.length });
+
+            return media;
+        } catch (error) {
+            timer.end({ error: true });
+            throw errorHandler.database(error, 'getAllMedia');
         }
     }
 

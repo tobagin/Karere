@@ -213,10 +213,13 @@ async function handleGetInitialChats() {
                 const chats = dbChats.map(chat => ({
                     jid: chat.jid,
                     name: chat.contact_name || chat.name || chat.jid, // Prefer contact name
-                    lastMessage: chat.last_message_content || 'No messages yet',
+                    lastMessage: formatLastMessageContent(chat.last_message_content, chat.last_message_type || 'text'),
                     timestamp: chat.last_message_timestamp,
+                    lastMessageType: chat.last_message_type || 'text',
+                    lastMessageFrom: chat.last_message_from,
                     unreadCount: chat.unread_count || 0,
-                    avatarBase64: chat.contact_avatar_base64,
+                    avatarBase64: chat.contact_avatar_base64, // Contact avatar
+                    chatAvatarBase64: chat.avatar_base64, // Chat-specific avatar (for groups)
                     phoneNumber: chat.contact_phone_number
                 }));
 
@@ -281,8 +284,8 @@ async function handleSendMessage(data) {
             'sent'
         );
 
-        // Update chat in database
-        await database.saveChat(to, null, actualMessageId, Date.now());
+        // Update chat in database with message details
+        await database.saveChat(to, null, actualMessageId, Date.now(), null, 'text', 'me');
 
         // Confirm message sent
         sendToFrontend('message_sent', {
@@ -324,8 +327,8 @@ async function handleGetMessageHistory(data) {
     try {
         log.message('Fetching message history', { jid, limit, offset });
 
-        // First try to get from database
-        let messages = await database.getMessages(jid, limit, offset);
+        // First try to get from database with enhanced message data
+        let messages = await database.getMessagesWithSender(jid, limit, offset);
 
         if (messages.length === 0 && sock && baileysConnectionStatus === 'open') {
             // If no messages in database, try to fetch from Baileys
@@ -335,35 +338,40 @@ async function handleGetMessageHistory(data) {
                 // Save to database and process
                 for (const msg of baileysMessages) {
                     const messageContent = getDisplayMessage(msg);
-                    if (messageContent) {
+                    const messageType = getMessageType(msg);
+                    if (messageContent || messageType !== 'text') {
                         await database.saveMessage(
                             msg.key.id,
                             jid,
                             msg.key.fromMe,
-                            messageContent,
+                            messageContent || '',
                             msg.messageTimestamp * 1000, // Convert to milliseconds
-                            'text',
-                            'received'
+                            messageType,
+                            'received',
+                            msg.pushName || null
                         );
                     }
                 }
 
-                // Get the saved messages
-                messages = await database.getMessages(jid, limit, offset);
+                // Get the saved messages with enhanced data
+                messages = await database.getMessagesWithSender(jid, limit, offset);
 
             } catch (baileysError) {
                 log.warn('Failed to fetch from Baileys, using database only', baileysError);
             }
         }
 
-        // Process messages for frontend
+        // Process messages for frontend with all required fields
         const processedMessages = messages.map(msg => ({
             id: msg.id,
-            from: msg.chat_jid,
-            fromMe: msg.from_me === 1,
-            text: msg.content,
+            content: msg.content,
             timestamp: msg.timestamp,
-            status: msg.status
+            type: msg.message_type || 'text',
+            from: msg.from_me === 1 ? 'me' : msg.chat_jid, // 'me' if from user, sender JID if from contact
+            fromMe: msg.from_me === 1,
+            status: msg.status,
+            senderName: msg.display_sender_name || (msg.from_me === 1 ? 'You' : null),
+            senderAvatar: msg.sender_avatar_base64
         }));
 
         sendToFrontend('message_history', { jid, messages: processedMessages });
@@ -669,22 +677,35 @@ async function handleHistorySet(item) {
         const chats = [];
 
         for (const chat of item.chats) {
+            const lastMessage = chat.messages?.[0];
+            const lastMessageType = lastMessage ? getMessageType(lastMessage) : 'text';
+            const lastMessageContent = lastMessage ? getDisplayMessage(lastMessage) : null;
+            const lastMessageFrom = lastMessage ? (lastMessage.key.fromMe ? 'me' : chat.id) : null;
+
             const chatData = {
                 jid: chat.id,
                 name: chat.name || chat.id,
-                lastMessage: getDisplayMessage(chat.messages?.[0]) || 'No messages yet',
-                timestamp: chat.messages?.[0]?.messageTimestamp * 1000 || Date.now(),
-                unreadCount: chat.unreadCount || 0
+                lastMessage: formatLastMessageContent(lastMessageContent, lastMessageType),
+                timestamp: lastMessage?.messageTimestamp * 1000 || Date.now(),
+                lastMessageType: lastMessageType,
+                lastMessageFrom: lastMessageFrom,
+                unreadCount: chat.unreadCount || 0,
+                avatarBase64: null, // Will be populated by contact sync
+                chatAvatarBase64: null, // Will be populated by chat avatar download
+                phoneNumber: null // Will be populated by contact sync
             };
 
             chats.push(chatData);
 
-            // Save chat to database
+            // Save chat to database with enhanced data
             await database.saveChat(
                 chatData.jid,
                 chatData.name,
-                chat.messages?.[0]?.key?.id,
-                chatData.timestamp
+                lastMessage?.key?.id,
+                chatData.timestamp,
+                null, // avatar will be downloaded separately
+                lastMessageType,
+                lastMessageFrom
             );
 
             // Save contact information if available
@@ -766,11 +787,16 @@ async function handleMessagesUpsert(m) {
                 // Get updated contact info
                 const contact = await database.getContact(jid);
 
-                // Send to frontend with enhanced data
+                // Send to frontend with comprehensive message data
+                const messageType = getMessageType(msg);
                 sendToFrontend('newMessage', {
-                    from: jid,
-                    body: messageContent,
+                    id: msg.key.id,
+                    content: messageContent,
                     timestamp: msg.messageTimestamp * 1000,
+                    type: messageType,
+                    from: msg.key.fromMe ? 'me' : jid,
+                    fromMe: msg.key.fromMe,
+                    chatJid: jid,
                     contactName: contactName,
                     avatarBase64: contact?.avatar_base64,
                     senderName: contactName
@@ -819,10 +845,13 @@ async function loadInitialChats() {
             const chats = dbChats.map(chat => ({
                 jid: chat.jid,
                 name: chat.contact_name || chat.name || chat.jid, // Prefer contact name
-                lastMessage: chat.last_message_content || 'No messages yet',
+                lastMessage: formatLastMessageContent(chat.last_message_content, chat.last_message_type || 'text'),
                 timestamp: chat.last_message_timestamp,
+                lastMessageType: chat.last_message_type || 'text',
+                lastMessageFrom: chat.last_message_from,
                 unreadCount: chat.unread_count || 0,
-                avatarBase64: chat.contact_avatar_base64,
+                avatarBase64: chat.contact_avatar_base64, // Contact avatar
+                chatAvatarBase64: chat.avatar_base64, // Chat-specific avatar (for groups)
                 phoneNumber: chat.contact_phone_number
             }));
 
@@ -1080,14 +1109,19 @@ async function performComprehensiveDataDownload() {
                 const jid = chat.jid;
                 log.debug(`Processing chat: ${jid}`);
 
-                // Download message history for this chat
-                const messageCount = await downloadMessageHistory(jid);
+                // Download comprehensive message history for this chat (more messages)
+                const messageCount = await downloadMessageHistory(jid, 500); // Download up to 500 messages per chat
                 downloadedMessages += messageCount;
 
                 // Download contact info and avatar
                 const contactUpdated = await downloadContactInfo(jid);
                 if (contactUpdated.nameUpdated) updatedContacts++;
                 if (contactUpdated.avatarDownloaded) downloadedAvatars++;
+
+                // Download chat avatar if it's a group
+                if (jid.endsWith('@g.us')) {
+                    await downloadChatAvatar(jid);
+                }
 
                 processedChats++;
 
@@ -1236,7 +1270,7 @@ async function waitForInitialHistory() {
 }
 
 // Download message history for a specific chat
-async function downloadMessageHistory(jid, limit = 50) {
+async function downloadMessageHistory(jid, limit = 200) {
     const timer = performance.start('download_message_history');
 
     try {
@@ -1244,47 +1278,191 @@ async function downloadMessageHistory(jid, limit = 50) {
             return 0;
         }
 
-        // Check if we already have messages for this chat
-        const existingMessages = await database.getMessages(jid, 5);
-        if (existingMessages.length > 0) {
-            log.debug(`Chat ${jid} already has messages, skipping download`);
-            return 0;
-        }
+        log.debug(`Downloading comprehensive message history for ${jid}`);
 
-        log.debug(`Downloading message history for ${jid}`);
+        // For comprehensive download, we want to get more messages
+        // We'll download in batches to avoid overwhelming the system
+        let totalSavedCount = 0;
+        let batchSize = 50;
+        let remainingLimit = limit;
 
-        // Fetch message history from WhatsApp
-        const messages = await sock.fetchMessageHistory(jid, limit);
-        let savedCount = 0;
+        while (remainingLimit > 0 && batchSize > 0) {
+            const currentBatchSize = Math.min(batchSize, remainingLimit);
 
-        for (const msg of messages) {
             try {
-                const messageContent = getDisplayMessage(msg);
-                if (messageContent) {
-                    await database.saveMessage(
-                        msg.key.id,
-                        jid,
-                        msg.key.fromMe,
-                        messageContent,
-                        msg.messageTimestamp * 1000,
-                        'text',
-                        'received'
-                    );
-                    savedCount++;
+                // Fetch message history from WhatsApp
+                const messages = await sock.fetchMessageHistory(jid, currentBatchSize);
+
+                if (!messages || messages.length === 0) {
+                    log.debug(`No more messages available for ${jid}`);
+                    break;
                 }
-            } catch (msgError) {
-                log.debug('Failed to save message', { jid, error: msgError.message });
+
+                let batchSavedCount = 0;
+
+                for (const msg of messages) {
+                    try {
+                        // Check if message already exists to avoid duplicates
+                        const existingMessage = await database.getMessage(msg.key.id);
+                        if (existingMessage) {
+                            continue;
+                        }
+
+                        const messageContent = getDisplayMessage(msg);
+                        const messageType = getMessageType(msg);
+
+                        if (messageContent || messageType !== 'text') {
+                            await database.saveMessage(
+                                msg.key.id,
+                                jid,
+                                msg.key.fromMe,
+                                messageContent || '',
+                                msg.messageTimestamp * 1000,
+                                messageType,
+                                'received',
+                                msg.pushName || null
+                            );
+                            batchSavedCount++;
+
+                            // Download media if present
+                            if (messageType !== 'text' && msg.message) {
+                                await downloadMessageMedia(msg, jid);
+                            }
+                        }
+                    } catch (msgError) {
+                        log.debug('Failed to save message', { jid, messageId: msg.key.id, error: msgError.message });
+                    }
+                }
+
+                totalSavedCount += batchSavedCount;
+                remainingLimit -= currentBatchSize;
+
+                log.debug(`Downloaded batch of ${batchSavedCount} messages for ${jid} (total: ${totalSavedCount})`);
+
+                // If we got fewer messages than requested, we've reached the end
+                if (messages.length < currentBatchSize) {
+                    break;
+                }
+
+                // Small delay between batches to avoid rate limiting
+                await new Promise(resolve => setTimeout(resolve, 200));
+
+            } catch (batchError) {
+                log.debug(`Failed to download message batch for ${jid}`, batchError);
+                break;
             }
         }
 
-        timer.end({ jid, savedCount });
-        log.debug(`Downloaded ${savedCount} messages for ${jid}`);
-        return savedCount;
+        timer.end({ jid, totalSavedCount });
+        log.debug(`Downloaded ${totalSavedCount} total messages for ${jid}`);
+        return totalSavedCount;
 
     } catch (error) {
         timer.end({ error: true });
         log.debug(`Failed to download message history for ${jid}`, error);
         return 0;
+    }
+}
+
+// Get message type from WhatsApp message object
+function getMessageType(msg) {
+    if (!msg.message) return 'text';
+
+    const messageTypes = {
+        conversation: 'text',
+        extendedTextMessage: 'text',
+        imageMessage: 'image',
+        videoMessage: 'video',
+        audioMessage: 'audio',
+        documentMessage: 'document',
+        stickerMessage: 'sticker',
+        locationMessage: 'location',
+        liveLocationMessage: 'live_location',
+        contactMessage: 'contact',
+        contactsArrayMessage: 'contacts',
+        groupInviteMessage: 'group_invite',
+        buttonsMessage: 'buttons',
+        templateMessage: 'template',
+        listMessage: 'list',
+        reactionMessage: 'reaction',
+        pollCreationMessage: 'poll',
+        pollUpdateMessage: 'poll_update'
+    };
+
+    for (const [type, displayType] of Object.entries(messageTypes)) {
+        if (msg.message[type]) {
+            return displayType;
+        }
+    }
+
+    return 'unknown';
+}
+
+// Format last message content according to requirements
+function formatLastMessageContent(content, messageType) {
+    // If message type is text, return the full content
+    if (messageType === 'text') {
+        return content || 'No messages yet';
+    }
+
+    // For non-text messages, return null as per requirements
+    return null;
+}
+
+// Download media for a message
+async function downloadMessageMedia(msg, chatJid) {
+    const timer = performance.start('download_message_media');
+
+    try {
+        if (!sock || baileysConnectionStatus !== 'open') {
+            return false;
+        }
+
+        const messageType = getMessageType(msg);
+        if (messageType === 'text' || messageType === 'unknown') {
+            return false;
+        }
+
+        log.debug(`Downloading media for message ${msg.key.id} (type: ${messageType})`);
+
+        // Get the media message object
+        let mediaMessage = null;
+        if (msg.message.imageMessage) mediaMessage = msg.message.imageMessage;
+        else if (msg.message.videoMessage) mediaMessage = msg.message.videoMessage;
+        else if (msg.message.audioMessage) mediaMessage = msg.message.audioMessage;
+        else if (msg.message.documentMessage) mediaMessage = msg.message.documentMessage;
+        else if (msg.message.stickerMessage) mediaMessage = msg.message.stickerMessage;
+
+        if (!mediaMessage) {
+            return false;
+        }
+
+        // Download the media buffer
+        const buffer = await baileys.downloadMediaMessage(msg, 'buffer', {});
+
+        if (buffer && buffer.length > 0) {
+            // Save media information to database
+            await database.saveMedia(
+                `${msg.key.id}_media`,
+                msg.key.id,
+                null, // file_path - we're not saving to disk
+                mediaMessage.fileName || `${messageType}_${msg.key.id}`,
+                buffer.length,
+                mediaMessage.mimetype || `${messageType}/*`
+            );
+
+            log.debug(`Downloaded media for message ${msg.key.id}: ${buffer.length} bytes`);
+            timer.end({ messageId: msg.key.id, size: buffer.length });
+            return true;
+        }
+
+        timer.end({ messageId: msg.key.id, downloaded: false });
+        return false;
+
+    } catch (error) {
+        timer.end({ error: true });
+        log.debug(`Failed to download media for message ${msg.key.id}`, error);
+        return false;
     }
 }
 
@@ -1321,7 +1499,27 @@ async function downloadContactInfo(jid) {
             }
         }
 
-        // Avatar downloading removed - using base64 only now
+        // Download avatar as base64 if we don't have it
+        if (!existingContact?.avatar_base64) {
+            try {
+                const avatarUrl = await sock.profilePictureUrl(jid, 'image');
+                if (avatarUrl) {
+                    // Download the avatar image
+                    const response = await fetch(avatarUrl);
+                    if (response.ok) {
+                        const buffer = await response.arrayBuffer();
+                        const base64Avatar = Buffer.from(buffer).toString('base64');
+
+                        // Save the avatar as base64
+                        await database.updateContactAvatar(jid, base64Avatar);
+                        avatarDownloaded = true;
+                        log.debug(`Downloaded avatar for ${jid}: ${base64Avatar.length} chars`);
+                    }
+                }
+            } catch (avatarError) {
+                log.debug(`Failed to download avatar for ${jid}`, avatarError);
+            }
+        }
 
         timer.end({ jid, nameUpdated, avatarDownloaded });
         return { nameUpdated, avatarDownloaded };
@@ -1330,6 +1528,53 @@ async function downloadContactInfo(jid) {
         timer.end({ error: true });
         log.debug(`Failed to download contact info for ${jid}`, error);
         return { nameUpdated: false, avatarDownloaded: false };
+    }
+}
+
+// Download chat avatar (for groups)
+async function downloadChatAvatar(jid) {
+    const timer = performance.start('download_chat_avatar');
+
+    try {
+        if (!sock || baileysConnectionStatus !== 'open') {
+            return false;
+        }
+
+        // Check if we already have a chat avatar
+        const existingChat = await database.getChatWithContact(jid);
+        if (existingChat?.avatar_base64) {
+            return false; // Already have avatar
+        }
+
+        log.debug(`Downloading chat avatar for ${jid}`);
+
+        try {
+            const avatarUrl = await sock.profilePictureUrl(jid, 'image');
+            if (avatarUrl) {
+                // Download the avatar image
+                const response = await fetch(avatarUrl);
+                if (response.ok) {
+                    const buffer = await response.arrayBuffer();
+                    const base64Avatar = Buffer.from(buffer).toString('base64');
+
+                    // Save the chat avatar as base64
+                    await database.updateChatAvatar(jid, base64Avatar);
+                    log.debug(`Downloaded chat avatar for ${jid}: ${base64Avatar.length} chars`);
+                    timer.end({ jid, downloaded: true });
+                    return true;
+                }
+            }
+        } catch (avatarError) {
+            log.debug(`Failed to download chat avatar for ${jid}`, avatarError);
+        }
+
+        timer.end({ jid, downloaded: false });
+        return false;
+
+    } catch (error) {
+        timer.end({ error: true });
+        log.debug(`Failed to download chat avatar for ${jid}`, error);
+        return false;
     }
 }
 
@@ -1613,10 +1858,13 @@ async function refreshChatList() {
         const chats = dbChats.map(chat => ({
             jid: chat.jid,
             name: chat.contact_name || chat.name || chat.jid,
-            lastMessage: chat.last_message_content || 'No messages yet',
+            lastMessage: formatLastMessageContent(chat.last_message_content, chat.last_message_type || 'text'),
             timestamp: chat.last_message_timestamp,
+            lastMessageType: chat.last_message_type || 'text',
+            lastMessageFrom: chat.last_message_from,
             unreadCount: chat.unread_count || 0,
-            avatarBase64: chat.contact_avatar_base64,
+            avatarBase64: chat.contact_avatar_base64, // Contact avatar
+            chatAvatarBase64: chat.avatar_base64, // Chat-specific avatar (for groups)
             phoneNumber: chat.contact_phone_number
         }));
 

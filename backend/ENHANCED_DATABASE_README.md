@@ -41,10 +41,16 @@ The Karere backend database has been significantly enhanced to properly handle c
 - Chats now include contact information in queries
 - Avatar base64 data and phone numbers included in chat data
 - Better contact name resolution (prefers contact name over chat name)
+- Chats table now includes avatar_base64 column for storing chat-specific avatars
+- Chats table includes last_message_type and last_message_from columns for enhanced message tracking
 
 #### New Methods
 - `getChatWithContact(jid)` - Get chat with full contact information
 - Enhanced `getChats()` with contact data joins
+- `updateChatAvatar(jid, avatarBase64)` - Update chat avatar with base64 data
+- `saveMedia(id, messageId, filePath, fileName, fileSize, mimeType)` - Save media information
+- `getMedia(messageId)` - Get media files for a specific message
+- `getAllMedia(limit)` - Get all media files with message context
 
 ### 4. Avatar Management System
 
@@ -53,6 +59,32 @@ The Karere backend database has been significantly enhanced to properly handle c
 - No file-based avatar storage or caching
 - Efficient storage and retrieval through database queries
 - Support for multiple image formats (JPG, PNG, GIF, WebP) as base64
+
+### 5. Comprehensive Data Download System
+
+#### First-Time Authentication Download
+- Upon first authentication with WhatsApp, the backend automatically downloads ALL available data
+- Downloads up to 500 messages per chat (configurable)
+- Downloads all contact information and avatars as base64
+- Downloads all chat avatars for groups
+- Downloads and catalogs all media files (images, videos, audio, documents)
+- Processes data in batches to avoid overwhelming the system
+
+#### Media Management
+- All media files are cataloged in the database with metadata
+- Media information includes file name, size, MIME type, and message association
+- Media downloading is integrated with message history download
+- Support for images, videos, audio, documents, stickers, and other media types
+
+### 6. Enhanced Frontend Communication
+
+#### Comprehensive Chat Information
+- Backend sends complete chat information to frontend including all required fields
+- Last message content is shown in full if it's text, null if it's non-text (as per requirements)
+- Message type information (text, image, video, audio, document, etc.)
+- Message sender information (me vs contact JID)
+- Separate contact and chat avatars (important for group chats)
+- Contact phone numbers and names with proper fallback handling
 
 #### Key Features
 - `updateContactAvatar(jid, avatarBase64)` - Store avatar as base64
@@ -129,6 +161,24 @@ const avatarBase64 = contact?.avatar_base64;
 
 // Save contact with avatar during initial save
 await database.saveContact(jid, name, phoneNumber, avatarBase64);
+
+// Update chat avatar with base64 data
+await database.updateChatAvatar(jid, chatAvatarBase64);
+
+// Save chat with avatar during initial save
+await database.saveChat(jid, name, lastMessageId, timestamp, avatarBase64);
+
+// Save chat with full last message information
+await database.saveChat(jid, name, lastMessageId, timestamp, avatarBase64, lastMessageType, lastMessageFrom);
+
+// Save media information
+await database.saveMedia(mediaId, messageId, null, fileName, fileSize, mimeType);
+
+// Get media for a specific message
+const mediaFiles = await database.getMedia(messageId);
+
+// Get all media files
+const allMedia = await database.getAllMedia(100);
 ```
 
 ### Enhanced Chat Data
@@ -136,7 +186,7 @@ await database.saveContact(jid, name, phoneNumber, avatarBase64);
 ```javascript
 // Get chats with contact information
 const chats = await database.getChats(50);
-// Returns: jid, name, contact_name, contact_avatar_base64, contact_phone_number, etc.
+// Returns: jid, name, avatar_base64, last_message_type, last_message_from, contact_name, contact_avatar_base64, contact_phone_number, etc.
 
 // Get specific chat with contact details
 const chat = await database.getChatWithContact(jid);
@@ -155,24 +205,53 @@ ws.send(JSON.stringify({ type: 'sync_contacts' }));
 #### `get_contact_info`
 Get detailed contact information
 ```javascript
-ws.send(JSON.stringify({ 
-    type: 'get_contact_info', 
+ws.send(JSON.stringify({
+    type: 'get_contact_info',
     data: { jid: '5511999887766@s.whatsapp.net' }
+}));
+```
+
+#### `get_message_history`
+Get message history for a specific chat
+```javascript
+ws.send(JSON.stringify({
+    type: 'get_message_history',
+    data: { jid: '5511999887766@s.whatsapp.net', limit: 50, offset: 0 }
 }));
 ```
 
 ### Enhanced Responses
 
-#### `initial_chats` and `newMessage`
-Now include additional contact data:
+#### `initial_chats` and `chats_updated`
+Now include comprehensive chat data:
 ```javascript
 {
     jid: '5511999887766@s.whatsapp.net',
     name: 'João Silva',
-    avatarPath: '/path/to/avatar.jpg',
-    phoneNumber: '+55 11 99988-7766',
-    lastMessage: 'Hello!',
-    timestamp: 1640995200000
+    lastMessage: 'Hello!', // Full content if text, null if not text
+    timestamp: 1640995200000,
+    lastMessageType: 'text', // 'text', 'image', 'video', 'audio', etc.
+    lastMessageFrom: 'me', // 'me' or sender JID
+    unreadCount: 2,
+    avatarBase64: 'data:image/jpeg;base64,...', // Contact avatar
+    chatAvatarBase64: 'data:image/jpeg;base64,...', // Chat-specific avatar (groups)
+    phoneNumber: '+55 11 99988-7766'
+}
+```
+
+#### `message_history` and `newMessage`
+Now include comprehensive message data:
+```javascript
+{
+    id: 'msg_12345',
+    content: 'Hello, how are you?',
+    timestamp: 1640995200000,
+    type: 'text', // 'text', 'image', 'video', 'audio', 'document', etc.
+    from: 'me', // 'me' if from user, sender JID if from contact
+    fromMe: true,
+    status: 'sent', // 'sent', 'delivered', 'read', 'failed'
+    senderName: 'You', // Display name of sender
+    senderAvatar: 'data:image/jpeg;base64,...' // Sender's avatar
 }
 ```
 

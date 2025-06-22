@@ -1,6 +1,6 @@
 {
   "name": "karere-backend",
-  "version": "1.0.0",
+  "version": "0.6.3",
   "description": "Baileys backend for the Karere WhatsApp client.",
   "main": "backend.js",
 
