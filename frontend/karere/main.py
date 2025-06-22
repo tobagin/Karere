@@ -65,6 +65,9 @@ class KarereApplication(Adw.Application):
         self.ws_client = None
         self.backend_process = None
         self.backend_ready = False
+        self.connected = False  # Track backend connection state
+        self.was_previously_connected = False  # Track if we were connected before
+        self.syncing = False  # Track sync state
 
         # Register cleanup handlers
         atexit.register(self.cleanup_backend)
@@ -116,8 +119,65 @@ class KarereApplication(Adw.Application):
             # Set up WebSocket client for the window
             from websocket_client import WebSocketClient
             self.win.websocket_client = WebSocketClient(self.win)
+            # Pass application reference to window for accessing connected state
+            self.win.app = self
             self.setup_websocket()
+            # Set up application actions
+            self.setup_actions()
         self.win.present()
+
+    def setup_actions(self):
+        """Set up application actions."""
+        # Settings action
+        settings_action = Gio.SimpleAction.new('settings', None)
+        settings_action.connect('activate', self.on_settings_action)
+        self.add_action(settings_action)
+
+        # About action
+        about_action = Gio.SimpleAction.new('about', None)
+        about_action.connect('activate', self.on_about_action)
+        self.add_action(about_action)
+
+        # New chat action (placeholder)
+        new_chat_action = Gio.SimpleAction.new('new-chat', None)
+        new_chat_action.connect('activate', self.on_new_chat_action)
+        self.add_action(new_chat_action)
+
+        # New group action (placeholder)
+        new_group_action = Gio.SimpleAction.new('new-group', None)
+        new_group_action.connect('activate', self.on_new_group_action)
+        self.add_action(new_group_action)
+
+    def on_settings_action(self, action, param):
+        """Handle settings action."""
+        from settings_dialog import SettingsDialog
+        settings_dialog = SettingsDialog()
+        settings_dialog.set_transient_for(self.win)
+        settings_dialog.present()
+
+    def on_about_action(self, action, param):
+        """Handle about action."""
+        # Load about dialog from resources
+        builder = Gtk.Builder()
+        resource_base = f'/{APP_ID.replace(".", "/")}'
+        builder.add_from_resource(f'{resource_base}/ui/dialogs/about.ui')
+        about_dialog = builder.get_object('about_dialog')
+
+        # Set transient for main window
+        about_dialog.set_transient_for(self.win)
+
+        # Present the dialog
+        about_dialog.present()
+
+    def on_new_chat_action(self, action, param):
+        """Handle new chat action."""
+        # TODO: Implement new chat functionality
+        print("New chat action triggered")
+
+    def on_new_group_action(self, action, param):
+        """Handle new group action."""
+        # TODO: Implement new group functionality
+        print("New group action triggered")
 
     def start_backend(self):
         """Start the backend Node.js process."""
@@ -232,8 +292,13 @@ class KarereApplication(Adw.Application):
         print("WebSocket client setup and started.")
 
     def on_qr_received(self, _, qr_url):
-        self.win.show_qr_view()
-        self.win.show_qr_code(qr_url)
+        """Handler for when QR code is received from backend."""
+        # Only show QR view if we're connected to backend
+        if self.connected:
+            self.win.show_qr_view()
+            self.win.show_qr_code(qr_url)
+        else:
+            print("QR code received but not connected to backend, ignoring.")
 
     def on_status_update(self, _, message):
         self.win.show_toast(message)
@@ -241,29 +306,61 @@ class KarereApplication(Adw.Application):
     def on_connection_opened(self, _):
         """Handler for when the WebSocket connection to the backend is established."""
         print("WebSocket connection to backend service is open.")
-        # Check if we're currently on the reconnecting page and switch back to loading
-        if self.win and hasattr(self.win, 'navigation_view') and self.win.navigation_view:
-            current_page = self.win.navigation_view.get_visible_page()
-            if current_page == self.win.reconnecting_page:
-                self.win.navigation_view.pop_to_page(self.win.loading_page)
+        self.connected = True  # Set connected to True when connection is established
+        self.was_previously_connected = True  # Mark that we've been connected
+
+        # Update view based on connection state
+        if self.win:
+            # Check if we're currently on the reconnecting page and switch back to loading
+            current_content = self.win.split_view.get_content()
+            if current_content == self.win.reconnecting_page:
+                print("Connection restored! Switching from reconnecting to loading view.")
+                self.win.show_loading_view()
+                # Uncollapse sidebar if we were in chat view before
+                if hasattr(self.win, 'chat_list_page') and self.win.chat_list_page:
+                    self.win.split_view.set_collapsed(False)
+
+            self.win.update_view_based_on_connection()
 
     def on_connection_closed(self, _):
         """Handler for when the connection to the backend is lost."""
-        self.win.show_reconnecting_view()
-        
+        self.connected = False  # Set connected to False when connection is lost
+
+        # Show reconnecting view if we were previously connected, loading view if we never connected
+        if self.win:
+            if self.was_previously_connected:
+                print("Connection lost! Showing reconnecting view.")
+                self.win.show_reconnecting_view()
+            else:
+                print("Initial connection failed. Showing loading view.")
+                self.win.show_loading_view()
+
+    def is_connected(self):
+        """Returns True if connected to backend, False otherwise."""
+        return self.connected
+
+    def is_syncing(self):
+        """Returns True if sync is in progress, False otherwise."""
+        return self.syncing
+
     def on_baileys_ready(self, _):
         """
         Handler for when the backend is fully connected to WhatsApp.
-        Now we request the initial chats.
+        The backend will handle whether to start sync or go directly to chats.
         """
-        print("Backend is ready. Switching to chat view and requesting chats.")
-        if self.win:
-            self.win.show_chat_view()
-            self.ws_client.send_command('get_initial_chats') # Request chats
+        print("Backend is ready and connected to WhatsApp.")
+        # Don't immediately switch to chat view - let the backend determine
+        # if sync is needed or if we can go directly to chats
+        # The backend will send either sync-started or initial_chats signals
 
     def on_initial_chats(self, _, chats):
         """Handler for receiving the initial list of chats."""
         print(f"Received {len(chats)} initial chats.")
+
+        # Switch to chat view when we receive initial chats
+        if self.win:
+            self.win.show_chat_view()
+
         for chat in chats:
             # Use contact name if available and different from JID, otherwise use formatted phone number
             name = chat.get('name')
@@ -279,16 +376,23 @@ class KarereApplication(Adw.Application):
             if avatar_base64 == 'None':
                 avatar_base64 = None
 
+            # Get message type and sender information
+            message_type = chat.get('lastMessageType', 'text')
+            last_message_from = chat.get('lastMessageFrom')
+            from_me = last_message_from == 'me' if last_message_from else False
+
             self.win.add_or_update_chat(
                 chat['jid'],
                 chat['lastMessage'],
                 chat.get('timestamp'),
                 chat.get('unreadCount', 0),
                 contact_name,
-                avatar_base64
+                avatar_base64,
+                message_type,
+                from_me
             )
 
-    def on_new_message(self, _, from_jid, body, timestamp=None, contact_name=None, avatar_base64=None):
+    def on_new_message(self, _, from_jid, body, timestamp=None, contact_name=None, avatar_base64=None, message_type='text'):
         print(f"New message from {from_jid}: {body}")
         # Use provided timestamp or current time
         if timestamp is None:
@@ -305,7 +409,24 @@ class KarereApplication(Adw.Application):
         else:
             display_name = self.format_phone_number(from_jid)
 
-        self.win.add_or_update_chat(from_jid, body, timestamp, 0, display_name, avatar_base64)
+        # New messages from others are not from me
+        self.win.add_or_update_chat(from_jid, body, timestamp, 0, display_name, avatar_base64, message_type, False)
+
+    def on_message_sent(self, _, to_jid, message_text):
+        """Handle message sent confirmation from backend."""
+        print(f"Message sent successfully to {to_jid}: {message_text}")
+        # Update message status in the chat page
+        if self.win:
+            self.win.update_message_status(to_jid, message_text, 'sent')
+
+    def on_message_error(self, _, error_message):
+        """Handle message sending error from backend."""
+        print(f"Message sending failed: {error_message}")
+        # Show error toast
+        if self.win:
+            self.win.show_toast(f"Failed to send message: {error_message}")
+            # Update message status to failed
+            # Note: We'd need more info from backend to identify which message failed
 
     def on_message_sent(self, _, to_jid, message):
         """Handler for when a message is successfully sent."""
@@ -355,6 +476,7 @@ class KarereApplication(Adw.Application):
     def on_sync_started(self, _, message):
         """Handle sync started signal."""
         print(f"Sync started: {message}")
+        self.syncing = True  # Set syncing state to True
         self.win.show_sync_progress_view(message)
 
     def on_sync_progress(self, _, progress_data):
@@ -365,6 +487,7 @@ class KarereApplication(Adw.Application):
     def on_sync_complete(self, _, message):
         """Handle sync completion."""
         print(f"Sync complete: {message}")
+        self.syncing = False  # Set syncing state to False
         self.win.show_toast("Sync complete!")
 
         # Switch to chat view after sync
@@ -374,6 +497,7 @@ class KarereApplication(Adw.Application):
     def on_sync_error(self, _, error_message):
         """Handle sync errors."""
         print(f"Sync error: {error_message}")
+        self.syncing = False  # Set syncing state to False even on error
         self.win.show_toast(f"Sync failed: {error_message}")
         # Switch to chat view even if sync failed
         from gi.repository import GLib
@@ -394,6 +518,11 @@ class KarereApplication(Adw.Application):
             if avatar_base64 == 'None':
                 avatar_base64 = None
 
+            # Get message type and sender information
+            message_type = chat.get('lastMessageType', 'text')
+            last_message_from = chat.get('lastMessageFrom')
+            from_me = last_message_from == 'me' if last_message_from else False
+
             if jid:
                 # Use contact name if available and different from JID, otherwise use formatted phone number
                 if name and name != jid:
@@ -401,7 +530,7 @@ class KarereApplication(Adw.Application):
                 else:
                     contact_name = self.format_phone_number(jid)
 
-                self.win.add_or_update_chat(jid, last_message, timestamp, unread_count, contact_name, avatar_base64)
+                self.win.add_or_update_chat(jid, last_message, timestamp, unread_count, contact_name, avatar_base64, message_type, from_me)
 
     def _switch_to_chat_view_after_download(self):
         """Switch to chat view after download completion."""

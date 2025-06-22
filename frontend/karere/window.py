@@ -15,6 +15,7 @@ APP_ID = os.environ.get('FLATPAK_ID', 'io.github.tobagin.Karere')
 
 # Import our custom components
 from chat_list_page import ChatListPage
+from chat_page import ChatPage
 
 class ChatRow(Gtk.ListBoxRow):
     def __init__(self, jid, last_message, timestamp=None, unread_count=0):
@@ -143,28 +144,7 @@ class ChatRow(Gtk.ListBoxRow):
         else:
             self.unread_badge.set_visible(False)
 
-class MessageRow(Gtk.ListBoxRow):
-    def __init__(self, message_text, is_from_me=False, timestamp=None, status=None):
-        super().__init__()
-        self.message_text = message_text
-        self.is_from_me = is_from_me
-        self.status = status
 
-        # Create a simple label with no styling at all
-        message_label = Gtk.Label(label=f"[{'ME' if is_from_me else 'THEM'}] {message_text}")
-        message_label.set_wrap(True)
-        message_label.set_xalign(0.0)
-        message_label.set_size_request(300, 50)  # Force a visible size
-
-        # Set the label directly as the child - no containers, no styling
-        self.set_child(message_label)
-        self.set_selectable(False)
-
-        # Force visibility
-        self.set_visible(True)
-        message_label.set_visible(True)
-
-        print(f"Simple MessageRow created: '{message_text}'")
 
 @Gtk.Template(resource_path=f'/{APP_ID.replace(".", "/")}/ui/window.ui')
 class KarereWindow(Adw.ApplicationWindow):
@@ -197,10 +177,8 @@ class KarereWindow(Adw.ApplicationWindow):
         self.chat_list_page = ChatListPage()
         self.chat_list_page.set_window(self)
 
-        # Start with loading page and sidebar hidden
-        self.split_view.set_collapsed(True)  # Hide sidebar initially
-        self.split_view.set_content(self.loading_page)  # Show loading page
-        self.loading_spinner.start()
+        # Start with loading page (connected is false initially)
+        self.show_loading_view()
 
         # Connect signals for old chat list box (will be removed later)
         self.chat_list_box.connect('row-selected', self.on_chat_selected)
@@ -333,172 +311,14 @@ class KarereWindow(Adw.ApplicationWindow):
         print(f"Selected chat from list: {jid}")
 
     def create_chat_page(self, jid):
-        """Create a navigation page for a chat."""
-        display_name = self.get_display_name(jid)
+        """Create a ChatPage for a chat."""
+        # Create ChatPage instance
+        chat_page = ChatPage(jid)
+        chat_page.set_window(self)
 
-        # Create the navigation page
-        page = Adw.NavigationPage()
-        page.set_title(display_name)
-        page.set_tag(f"chat-{jid}")
+        return chat_page
 
-        # Create the toolbar view
-        toolbar_view = Adw.ToolbarView()
 
-        # Create header bar
-        header_bar = Adw.HeaderBar()
-        header_bar.set_title_widget(Gtk.Label(label=display_name))
-        toolbar_view.add_top_bar(header_bar)
-
-        # Create main content box
-        content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-
-        # Create messages area
-        messages_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        messages_box.set_vexpand(True)
-
-        # Create scrolled window for messages
-        messages_scrolled = Gtk.ScrolledWindow()
-        messages_scrolled.set_vexpand(True)
-        messages_scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-
-        # Create messages list box
-        messages_list_box = Gtk.ListBox()
-        messages_list_box.set_selection_mode(Gtk.SelectionMode.NONE)
-        messages_list_box.add_css_class("background")
-
-        messages_scrolled.set_child(messages_list_box)
-        messages_box.append(messages_scrolled)
-
-        # Create typing indicator
-        typing_revealer = Gtk.Revealer()
-        typing_revealer.set_reveal_child(False)
-        typing_revealer.set_transition_type(Gtk.RevealerTransitionType.SLIDE_UP)
-
-        typing_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        typing_box.set_margin_start(12)
-        typing_box.set_margin_end(12)
-        typing_box.set_margin_top(4)
-        typing_box.set_margin_bottom(4)
-
-        typing_spinner = Gtk.Spinner()
-        typing_spinner.set_spinning(True)
-        typing_spinner.set_size_request(16, 16)
-
-        typing_label = Gtk.Label(label="typing...")
-        typing_label.add_css_class("dim-label")
-        typing_label.add_css_class("caption")
-
-        typing_box.append(typing_spinner)
-        typing_box.append(typing_label)
-        typing_revealer.set_child(typing_box)
-
-        messages_box.append(typing_revealer)
-        content_box.append(messages_box)
-
-        # Create message input area
-        input_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        input_box.set_margin_start(12)
-        input_box.set_margin_end(12)
-        input_box.set_margin_top(8)
-        input_box.set_margin_bottom(12)
-
-        # Message entry
-        message_entry = Gtk.Entry()
-        message_entry.set_hexpand(True)
-        message_entry.set_placeholder_text("Type a message...")
-
-        # Emoji button
-        emoji_button = Gtk.Button()
-        emoji_button.set_icon_name("face-smile-symbolic")
-        emoji_button.set_tooltip_text("Add emoji")
-        emoji_button.add_css_class("flat")
-        emoji_button.add_css_class("circular")
-
-        # Send button
-        send_button = Gtk.Button()
-        send_button.set_icon_name("mail-send-symbolic")
-        send_button.set_tooltip_text("Send message")
-        send_button.add_css_class("suggested-action")
-        send_button.add_css_class("circular")
-
-        input_box.append(message_entry)
-        input_box.append(emoji_button)
-        input_box.append(send_button)
-        content_box.append(input_box)
-
-        toolbar_view.set_content(content_box)
-        page.set_child(toolbar_view)
-
-        # Store references for this chat
-        page.messages_list_box = messages_list_box
-        page.messages_scrolled = messages_scrolled
-        page.message_entry = message_entry
-        page.send_button = send_button
-        page.emoji_button = emoji_button
-        page.typing_revealer = typing_revealer
-        page.typing_label = typing_label
-        page.jid = jid
-
-        # Connect signals
-        send_button.connect('clicked', self.on_send_message_for_page, page)
-        message_entry.connect('activate', self.on_send_message_for_page, page)
-        message_entry.connect('changed', self.on_message_entry_changed_for_page, page)
-        emoji_button.connect('clicked', self.on_emoji_button_clicked_for_page, page)
-
-        return page
-
-    def on_send_message_for_page(self, widget, page):
-        """Handle sending a message from a specific chat page."""
-        jid = page.jid
-        message_text = page.message_entry.get_text().strip()
-        if not message_text:
-            return
-
-        # Clear the entry
-        page.message_entry.set_text("")
-
-        # Add message to UI immediately (optimistic update)
-        self.add_message_to_chat_page(page, message_text, is_from_me=True)
-
-        # Send message to backend
-        self.send_message_to_backend(jid, message_text)
-
-        print(f"Sending message to {jid}: {message_text}")
-
-    def on_message_entry_changed_for_page(self, entry, page):
-        """Handle message entry text changes for typing indicators."""
-        from gi.repository import GLib
-
-        # Cancel previous timeout
-        if self._typing_timeout:
-            GLib.source_remove(self._typing_timeout)
-            self._typing_timeout = None
-
-        text = entry.get_text()
-        jid = page.jid
-        if text and jid:
-            # Send typing indicator to backend
-            app = self.get_application()
-            if app and app.ws_client:
-                app.ws_client.send_command('typing_start', {
-                    'to': jid
-                })
-
-            # Set timeout to stop typing indicator
-            self._typing_timeout = GLib.timeout_add_seconds(3, self._stop_typing_timeout)
-        else:
-            # Send stop typing to backend immediately
-            self._send_stop_typing()
-
-    def on_emoji_button_clicked_for_page(self, button, page):
-        """Handle emoji button click for a specific page."""
-        if self._emoji_popover is None:
-            self._create_emoji_popover()
-
-        self._emoji_popover.set_parent(button)
-        self._emoji_popover.popup()
-        # Store current page for emoji insertion
-        self._current_emoji_page = page
 
 
 
@@ -514,29 +334,58 @@ class KarereWindow(Adw.ApplicationWindow):
                 return f"+{phone_number}"
         return jid
 
-    def add_or_update_chat(self, jid, last_message, timestamp=None, unread_count=0, contact_name=None, avatar_base64=None):
+    def add_or_update_chat(self, jid, last_message, timestamp=None, unread_count=0, contact_name=None, avatar_base64=None, message_type='text', from_me=False):
         # Use ChatListPage to add or update chat
-        self.chat_list_page.add_or_update_chat(jid, last_message, timestamp, unread_count, contact_name, avatar_base64)
+        self.chat_list_page.add_or_update_chat(jid, last_message, timestamp, unread_count, contact_name, avatar_base64, message_type, from_me)
 
         # Create navigation page for this chat if it doesn't exist
         if jid not in self._chat_pages:
             chat_page = self.create_chat_page(jid)
             self._chat_pages[jid] = chat_page
 
+        # Update contact information in existing chat page
+        if jid in self._chat_pages:
+            chat_page = self._chat_pages[jid]
+            chat_page.set_contact_info(contact_name, avatar_base64)
+
         # If this is the currently selected chat, add the message to the view
-        if jid == self._current_chat_jid:
-            self.add_message_to_chat(jid, last_message, is_from_me=False)
+        if jid == self._current_chat_jid and message_type == 'text':
+            self.add_message_to_chat(jid, last_message, is_from_me=from_me)
+
+    def show_loading_view(self):
+        """Switches to the loading page."""
+        self.split_view.set_content(self.loading_page)
+        self.loading_spinner.start()
+        # Ensure sidebar is collapsed when loading
+        self.split_view.set_collapsed(True)
+        print("Switched to loading view.")
+
+    def update_view_based_on_connection(self):
+        """Updates the view based on the current connection and sync state."""
+        if hasattr(self, 'app') and self.app:
+            if not self.app.is_connected():
+                # Not connected to backend - show loading page
+                self.show_loading_view()
+            elif self.app.is_syncing():
+                # Connected but syncing - sync view will be shown by sync handlers
+                pass
+            # If connected and not syncing, the appropriate view will be set by other handlers
+            # (QR, welcome, etc.)
 
     def show_reconnecting_view(self):
         """Switches to the reconnecting page."""
         self.split_view.set_content(self.reconnecting_page)
         self.reconnecting_spinner.start()
+        # Collapse sidebar when reconnecting
+        self.split_view.set_collapsed(True)
         print("Switched to reconnecting view.")
 
     def show_qr_view(self):
         """Switches to the QR code page."""
         self.split_view.set_content(self.qr_page)
         self.qr_spinner.start()
+        # Collapse sidebar when showing QR (not fully authenticated yet)
+        self.split_view.set_collapsed(True)
         print("Switched to QR view.")
 
     def show_qr_code(self, qr_data_url):
@@ -575,6 +424,8 @@ class KarereWindow(Adw.ApplicationWindow):
         self.download_details_label.set_text(message)
         self.download_progress_bar.set_fraction(0.0)
         self.download_spinner.start()
+        # Collapse sidebar during download (not ready for chat yet)
+        self.split_view.set_collapsed(True)
 
         # Reset counters
         self.chats_count_label.set_text("0")
@@ -590,6 +441,8 @@ class KarereWindow(Adw.ApplicationWindow):
         self.sync_details_label.set_text(message)
         self.sync_progress_bar.set_fraction(0.0)
         self.sync_spinner.start()
+        # Collapse sidebar during sync (not ready for chat yet)
+        self.split_view.set_collapsed(True)
 
         # Reset counters
         self.sync_chats_count_label.set_text("0")
@@ -692,16 +545,12 @@ class KarereWindow(Adw.ApplicationWindow):
     def add_message_to_chat_page(self, page, message_text, is_from_me=False):
         """Add a message to a specific chat page."""
         status = 'sending' if is_from_me else None
-        message_row = MessageRow(
+        page.add_message(
             message_text,
             is_from_me=is_from_me,
             timestamp=self.get_current_timestamp(),
             status=status
         )
-        page.messages_list_box.append(message_row)
-
-        # Scroll to bottom
-        self.scroll_to_bottom_for_page(page)
 
     def load_message_history(self, jid):
         """Load message history for a chat."""
@@ -710,24 +559,9 @@ class KarereWindow(Adw.ApplicationWindow):
 
         page = self._chat_pages[jid]
 
-        # Clear current messages
-        while True:
-            row = page.messages_list_box.get_first_child()
-            if row is None:
-                break
-            page.messages_list_box.remove(row)
-
         # Load messages from local history first
         if jid in self._message_history:
-            for message_data in self._message_history[jid]:
-                status = message_data.get('status', 'sent' if message_data['is_from_me'] else None)
-                message_row = MessageRow(
-                    message_data['text'],
-                    is_from_me=message_data['is_from_me'],
-                    timestamp=message_data['timestamp'],
-                    status=status
-                )
-                page.messages_list_box.append(message_row)
+            page.load_messages(self._message_history[jid])
 
         # Request message history from backend
         app = self.get_application()
@@ -738,19 +572,7 @@ class KarereWindow(Adw.ApplicationWindow):
                 'offset': 0
             })
 
-        # Scroll to bottom
-        self.scroll_to_bottom_for_page(page)
 
-    def scroll_to_bottom_for_page(self, page):
-        """Scroll the message view to the bottom for a specific page."""
-        def do_scroll():
-            vadj = page.messages_scrolled.get_vadjustment()
-            vadj.set_value(vadj.get_upper() - vadj.get_page_size())
-            return False
-
-        # Use idle_add to ensure the UI is updated first
-        from gi.repository import GLib
-        GLib.idle_add(do_scroll)
 
     def load_message_history_from_backend(self, jid, messages):
         """Load message history received from backend."""
@@ -760,17 +582,11 @@ class KarereWindow(Adw.ApplicationWindow):
         page = self._chat_pages[jid]
         print(f"Loading {len(messages)} messages for {jid}")
 
-        # Clear current messages in UI
-        while True:
-            row = page.messages_list_box.get_first_child()
-            if row is None:
-                break
-            page.messages_list_box.remove(row)
-
         # Clear local message history for this chat
         self._message_history[jid] = []
 
-        # Process and add messages from backend
+        # Process messages from backend
+        processed_messages = []
         for msg in messages:
             # Convert timestamp to readable format
             timestamp = self.format_timestamp(msg.get('timestamp'))
@@ -778,62 +594,27 @@ class KarereWindow(Adw.ApplicationWindow):
             # Store in local history
             message_data = {
                 'text': msg['text'],
-                'is_from_me': msg['fromMe'],
+                'fromMe': msg['fromMe'],
                 'timestamp': timestamp,
                 'status': msg.get('status', 'sent' if msg['fromMe'] else None)
             }
             self._message_history[jid].append(message_data)
+            processed_messages.append(message_data)
 
-            # Add to UI
-            message_row = MessageRow(
-                msg['text'],
-                is_from_me=msg['fromMe'],
-                timestamp=timestamp,
-                status=message_data['status']
-            )
-            print(f"Created MessageRow: text='{msg['text']}', from_me={msg['fromMe']}")
-            message_row.set_visible(True)
-            page.messages_list_box.append(message_row)
-            print(f"Added MessageRow to list box")
+        # Load messages into the chat page
+        page.load_messages(processed_messages)
 
-        # If no messages from backend, add a simple test widget
+        # If no messages from backend, add a sample message for testing
         if len(messages) == 0:
-            print(f"No messages found for {jid}, adding simple test widget")
-
-            # Create a simple test widget
-            test_row = Gtk.ListBoxRow()
-            test_label = Gtk.Label(label="TEST MESSAGE - This should be visible!")
-            test_label.set_size_request(300, 50)
-            test_label.set_visible(True)
-            test_row.set_child(test_label)
-            test_row.set_visible(True)
-            test_row.set_selectable(False)
-
-            page.messages_list_box.append(test_row)
-            print(f"Added simple test widget to messages_list_box")
-
-            # Also try the original MessageRow
+            print(f"No messages found for {jid}, adding sample message")
             sample_message = {
                 'text': 'This is a sample message to test the message display',
-                'is_from_me': False,
+                'fromMe': False,
                 'timestamp': self.get_current_timestamp(),
                 'status': None
             }
             self._message_history[jid] = [sample_message]
-
-            message_row = MessageRow(
-                sample_message['text'],
-                is_from_me=sample_message['is_from_me'],
-                timestamp=sample_message['timestamp'],
-                status=sample_message['status']
-            )
-            print(f"Created sample MessageRow: text='{sample_message['text']}'")
-            message_row.set_visible(True)
-            page.messages_list_box.append(message_row)
-            print(f"Added sample message row to messages_list_box")
-
-        # Scroll to bottom
-        self.scroll_to_bottom_for_page(page)
+            page.load_messages([sample_message])
 
     def format_timestamp(self, timestamp):
         """Format timestamp from backend to readable format."""
@@ -865,6 +646,12 @@ class KarereWindow(Adw.ApplicationWindow):
                 'to': jid,
                 'message': message_text
             })
+
+    def update_message_status(self, jid, message_text, status):
+        """Update the status of a message in the chat page."""
+        if jid in self._chat_pages:
+            chat_page = self._chat_pages[jid]
+            chat_page.update_message_status(message_text, status)
 
     def on_search_toggled(self, button):
         """Handle search button toggle."""
@@ -918,6 +705,16 @@ class KarereWindow(Adw.ApplicationWindow):
                 app.ws_client.send_command('typing_stop', {
                     'to': self._current_chat_jid
                 })
+
+    def show_emoji_popover(self, button, chat_page):
+        """Show emoji popover for a chat page."""
+        if self._emoji_popover is None:
+            self._create_emoji_popover()
+
+        self._emoji_popover.set_parent(button)
+        self._emoji_popover.popup()
+        # Store current chat page for emoji insertion
+        self._current_emoji_page = chat_page
 
 
 

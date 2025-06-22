@@ -38,6 +38,8 @@ class ChatRow(Gtk.ListBoxRow):
         self.is_pinned = False
         self._contact_name = None  # Cache for actual contact name
         self._avatar_base64 = None # Cache for profile picture base64 data
+        self._last_message_type = 'text'  # Default to text
+        self._last_message_from_me = False  # Track if last message is from user
 
         # Reference to chat list page (will be set by chat list page)
         self.chat_list_page = None
@@ -126,14 +128,15 @@ class ChatRow(Gtk.ListBoxRow):
         display_name = self.get_display_name(jid)
         self.name_label.set_text(display_name)
     
-    def update_last_message(self, message, timestamp=None):
+    def update_last_message(self, message, timestamp=None, message_type='text', from_me=False):
         """Update the last message and timestamp."""
-        # Truncate long messages
-        if len(message) > 50:
-            message = message[:47] + "..."
-        
-        self.last_message_label.set_text(message)
-        
+        self._last_message_type = message_type
+        self._last_message_from_me = from_me
+
+        # Format message based on type and sender
+        formatted_message = self.format_last_message(message, message_type, from_me)
+        self.last_message_label.set_text(formatted_message)
+
         if timestamp:
             time_str = self.format_timestamp(timestamp)
             self.time_label.set_text(time_str)
@@ -142,6 +145,44 @@ class ChatRow(Gtk.ListBoxRow):
             current_time = time.time()
             time_str = self.format_timestamp(current_time)
             self.time_label.set_text(time_str)
+
+    def format_last_message(self, message, message_type='text', from_me=False):
+        """Format the last message according to requirements."""
+        if message_type == 'text' and message:
+            # For text messages, truncate to 15 characters and add "You:" prefix if from user
+            if len(message) > 15:
+                truncated = message[:15] + "..."
+            else:
+                truncated = message
+
+            if from_me:
+                return f"You: {truncated}"
+            else:
+                return truncated
+        else:
+            # For non-text messages, show icon and type description
+            type_descriptions = {
+                'image': '📷 Image',
+                'video': '🎥 Video',
+                'audio': '🎵 Audio',
+                'document': '📄 Document',
+                'contact': '👤 Contact',
+                'location': '📍 Location',
+                'live_location': '📍 Live Location',
+                'call': '📞 Call',
+                'payment': '💳 Payment',
+                'gift': '🎁 Gift',
+                'sticker': '😀 Sticker',
+                'reaction': '👍 Reaction',
+                'group_invite': '👥 Group Invite'
+            }
+
+            description = type_descriptions.get(message_type, '❓ Unknown')
+
+            if from_me:
+                return f"You: {description}"
+            else:
+                return description
     
     def format_timestamp(self, timestamp):
         """Format timestamp for display."""

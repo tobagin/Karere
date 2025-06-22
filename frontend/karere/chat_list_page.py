@@ -50,14 +50,14 @@ class ChatListPage(Adw.NavigationPage):
         """Set reference to parent window."""
         self.window = window
     
-    def add_or_update_chat(self, jid, last_message, timestamp=None, unread_count=0, contact_name=None, avatar_base64=None):
+    def add_or_update_chat(self, jid, last_message, timestamp=None, unread_count=0, contact_name=None, avatar_base64=None, message_type='text', from_me=False):
         """Add or update a chat in the list."""
         from chat_row import ChatRow
 
         if jid in self._chat_rows:
             # Update existing chat row
             chat_row = self._chat_rows[jid]
-            chat_row.update_last_message(last_message, timestamp)
+            chat_row.update_last_message(last_message, timestamp, message_type, from_me)
             if unread_count > 0:
                 chat_row.update_unread_count(unread_count)
             # Update contact info if provided
@@ -73,6 +73,8 @@ class ChatListPage(Adw.NavigationPage):
             # Create new chat row
             new_row = ChatRow(jid, last_message, timestamp, unread_count)
             new_row.set_chat_list_page(self)  # Set reference to this page
+            # Update with message type and sender info
+            new_row.update_last_message(last_message, timestamp, message_type, from_me)
             # Set contact info if provided
             if contact_name:
                 new_row.set_contact_info(contact_name=contact_name)

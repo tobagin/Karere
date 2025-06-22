@@ -69,6 +69,8 @@ py_sources = [
   'karere/websocket_client.py',
   'karere/chat_list_page.py',
   'karere/chat_row.py',
+  'karere/chat_page.py',
+  'karere/settings_dialog.py',
   'karere/__init__.py',
 ]
 

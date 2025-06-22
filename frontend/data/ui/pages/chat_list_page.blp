@@ -1,6 +1,32 @@
 using Gtk 4.0;
 using Adw 1;
 
+menu main_menu {
+  section {
+    item {
+      label: _("New Chat");
+      action: "app.new-chat";
+    }
+
+    item {
+      label: _("New Group");
+      action: "app.new-group";
+    }
+  }
+
+  section {
+    item {
+      label: _("Settings");
+      action: "app.settings";
+    }
+
+    item {
+      label: _("About Karere");
+      action: "app.about";
+    }
+  }
+}
+
 template $KarereChatListPage : Adw.NavigationPage {
   title: "Chats";
 
@@ -9,9 +35,10 @@ template $KarereChatListPage : Adw.NavigationPage {
 
     Adw.HeaderBar {
       [start]
-      MenuButton {
+      MenuButton main_menu_button {
         icon-name: "open-menu-symbolic";
         tooltip-text: _("Main menu");
+        menu-model: main_menu;
       }
 
       title-widget: Adw.WindowTitle {

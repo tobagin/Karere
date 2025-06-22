@@ -1,10 +1,43 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
   <schema id="io.github.tobagin.Karere" path="/io/github/tobagin/Karere/">
-    <!-- Example key, you can add more for window size, etc. -->
-    <!-- <key name="window-width" type="i">
-      <default>800</default>
-      <summary>Window width</summary>
-    </key> -->
+    <!-- Theme settings -->
+    <key name="dark-mode" type="b">
+      <default>false</default>
+      <summary>Dark mode</summary>
+      <description>Use dark theme</description>
+    </key>
+
+    <key name="theme-preference" type="i">
+      <default>0</default>
+      <summary>Theme preference</summary>
+      <description>Theme preference: 0=System, 1=Light, 2=Dark</description>
+    </key>
+
+    <!-- Notification settings -->
+    <key name="enable-notifications" type="b">
+      <default>true</default>
+      <summary>Enable notifications</summary>
+      <description>Show desktop notifications for new messages</description>
+    </key>
+
+    <key name="notification-sounds" type="b">
+      <default>true</default>
+      <summary>Notification sounds</summary>
+      <description>Play sound for new messages</description>
+    </key>
+
+    <!-- Privacy settings -->
+    <key name="read-receipts" type="b">
+      <default>true</default>
+      <summary>Read receipts</summary>
+      <description>Send read receipts to contacts</description>
+    </key>
+
+    <key name="typing-indicators" type="b">
+      <default>true</default>
+      <summary>Typing indicators</summary>
+      <description>Show when you're typing</description>
+    </key>
   </schema>
 </schemalist>
