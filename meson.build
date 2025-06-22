@@ -3,7 +3,7 @@
 project(
   'karere',
   'c', 'cpp', # C/C++ needed for gobject-introspection
-  version: '0.6.3',
+  version: '0.6.4',
   meson_version: '>= 0.60.0',
   default_options: [
     'warning_level=1',
