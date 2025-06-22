@@ -1,5 +1,53 @@
+# Build directories
 builddir
-baileys_auth_info
-node_modules
-.flatpak-builder
 builddir-dev
+build/
+.flatpak-builder
+
+# Node.js
+node_modules/
+package-lock.json
+
+# Authentication data
+baileys_auth_info/
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+data/karere.db
+
+# Log files
+logs/
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Avatar storage (user data)
+data/avatars/
+backend/data/avatars/
+
+# Temporary and test files
+task-sample.md
+**/test-*.js
+**/test-*.py
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
