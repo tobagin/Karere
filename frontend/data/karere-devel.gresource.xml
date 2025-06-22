@@ -18,6 +18,8 @@
     <file>ui/pages/reconnecting_page.ui</file>
     <file>ui/pages/welcome_page.ui</file>
     <file>ui/pages/chat_page.ui</file>
+    <file>ui/pages/download_progress_page.ui</file>
+    <file>ui/pages/sync_progress_page.ui</file>
 
     <!-- Dialog UI Files -->
     <file>ui/dialogs/about.ui</file>

@@ -1,0 +1,22 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.NavigationPage welcome_page {
+  title: "Welcome";
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar welcome_header {
+      title-widget: Adw.WindowTitle {
+        title: "Karere";
+        subtitle: "A native WhatsApp client for Linux";
+      };
+    }
+
+    content: Adw.StatusPage {
+      title: "Welcome to Karere";
+      description: "Select a chat to start messaging.";
+      icon-name: "org.gnome.Characters-symbolic";
+    };
+  };
+}

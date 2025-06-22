@@ -1,0 +1,35 @@
+using Gtk 4.0;
+//using Adw 1;
+
+menu chat_page_menu {
+  section {
+    item {
+      label: _("Contact Info");
+      action: "chat.contact-info";
+    }
+
+    item {
+      label: _("Search Messages");
+      action: "chat.search";
+    }
+  }
+
+  section {
+    item {
+      label: _("Clear Messages");
+      action: "chat.clear";
+    }
+
+    item {
+      label: _("Export Chat");
+      action: "chat.export";
+    }
+  }
+
+  section {
+    item {
+      label: _("Block Contact");
+      action: "chat.block";
+    }
+  }
+}

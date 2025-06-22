@@ -1,0 +1,40 @@
+using Gtk 4.0;
+//using Adw 1;
+
+menu chat_row_menu {
+  section {
+    item {
+      label: _("Mark as Read");
+      action: "chat.mark-read";
+    }
+
+    item {
+      label: _("Mark as Unread");
+      action: "chat.mark-unread";
+    }
+  }
+
+  section {
+    item {
+      label: _("Pin Chat");
+      action: "chat.pin";
+    }
+
+    item {
+      label: _("Mute Chat");
+      action: "chat.mute";
+    }
+  }
+
+  section {
+    item {
+      label: _("Archive Chat");
+      action: "chat.archive";
+    }
+
+    item {
+      label: _("Delete Chat");
+      action: "chat.delete";
+    }
+  }
+}

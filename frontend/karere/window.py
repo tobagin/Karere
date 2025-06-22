@@ -13,6 +13,9 @@ from io import BytesIO
 import os
 APP_ID = os.environ.get('FLATPAK_ID', 'io.github.tobagin.Karere')
 
+# Import our custom components
+from chat_list_page import ChatListPage
+
 class ChatRow(Gtk.ListBoxRow):
     def __init__(self, jid, last_message, timestamp=None, unread_count=0):
         super().__init__()
@@ -168,7 +171,6 @@ class KarereWindow(Adw.ApplicationWindow):
     __gtype_name__ = 'KarereWindow'
 
     split_view = Gtk.Template.Child()
-    navigation_view = Gtk.Template.Child()
     chat_list_box = Gtk.Template.Child()
     search_bar = Gtk.Template.Child()
     search_entry = Gtk.Template.Child()
@@ -187,26 +189,28 @@ class KarereWindow(Adw.ApplicationWindow):
         # Verify template children are loaded
         if not self.split_view:
             raise RuntimeError("UI template failed to load - split_view is None")
-        if not self.navigation_view:
-            raise RuntimeError("UI template failed to load - navigation_view is None")
 
         # Load individual page UI files and add them to navigation view
         self._load_pages()
 
+        # Create and initialize ChatListPage
+        self.chat_list_page = ChatListPage()
+        self.chat_list_page.set_window(self)
+
         # Start with loading page and sidebar hidden
         self.split_view.set_collapsed(True)  # Hide sidebar initially
-        self.navigation_view.push([self.loading_page])  # Show loading page
+        self.split_view.set_content(self.loading_page)  # Show loading page
         self.loading_spinner.start()
 
-        # Connect signals
+        # Connect signals for old chat list box (will be removed later)
         self.chat_list_box.connect('row-selected', self.on_chat_selected)
 
-        # Search functionality
+        # Search functionality (will be handled by ChatListPage)
         self.search_button.connect('toggled', self.on_search_toggled)
         self.search_entry.connect('search-changed', self.on_search_changed)
         self.search_bar.connect_entry(self.search_entry)
 
-        # Set up search filtering
+        # Set up search filtering (will be handled by ChatListPage)
         self.chat_list_box.set_filter_func(self.filter_chat_row)
 
         # Initialize WebSocket client (will be set by main app)
@@ -245,34 +249,27 @@ class KarereWindow(Adw.ApplicationWindow):
         self.welcome_page = builder.get_object('welcome_page')
         print(type(self.welcome_page))
 
-        # Add all pages to the navigation view
-        # This makes them available for navigation but doesn't show them yet
-        self.navigation_view.add(self.loading_page)
-        self.navigation_view.add(self.qr_page)
-        self.navigation_view.add(self.reconnecting_page)
-        self.navigation_view.add(self.welcome_page)
+        # Load download progress page
+        builder.add_from_resource(f'{resource_base}/ui/pages/download_progress_page.ui')
+        self.download_progress_page = builder.get_object('download_progress_page')
+        self.download_progress_bar = builder.get_object('download_progress_bar')
+        self.download_progress_label = builder.get_object('download_progress_label')
+        self.download_details_label = builder.get_object('download_details_label')
+        self.chats_count_label = builder.get_object('chats_count_label')
+        self.messages_count_label = builder.get_object('messages_count_label')
+        self.avatars_count_label = builder.get_object('avatars_count_label')
+        self.download_spinner = builder.get_object('download_spinner')
 
-        print("All pages loaded and added to navigation view")
-
-    def _remove_temporary_pages(self):
-        """Remove temporary pages (loading, QR, reconnecting) from navigation view.
-
-        This is called after successful connection to clean up the navigation stack.
-        The welcome page and any chat pages will remain accessible.
-        """
-        try:
-            # Remove pages from navigation view
-            # Note: We keep them in the UI structure but remove from navigation stack
-            # so they can't be navigated back to
-            pages_to_remove = [self.loading_page, self.qr_page, self.reconnecting_page]
-            for page in pages_to_remove:
-                try:
-                    self.navigation_view.remove(page)
-                    print(f"Removed page: {page.get_title()}")
-                except Exception as e:
-                    print(f"Could not remove page {page.get_title()}: {e}")
-        except Exception as e:
-            print(f"Error removing temporary pages: {e}")
+        # Load sync progress page
+        builder.add_from_resource(f'{resource_base}/ui/pages/sync_progress_page.ui')
+        self.sync_progress_page = builder.get_object('sync_progress_page')
+        self.sync_progress_bar = builder.get_object('sync_progress_bar')
+        self.sync_progress_label = builder.get_object('sync_progress_label')
+        self.sync_details_label = builder.get_object('sync_details_label')
+        self.sync_chats_count_label = builder.get_object('sync_chats_count_label')
+        self.sync_messages_count_label = builder.get_object('sync_messages_count_label')
+        self.sync_contacts_count_label = builder.get_object('sync_contacts_count_label')
+        self.sync_spinner = builder.get_object('sync_spinner')
 
     def on_chat_selected(self, list_box, row):
         """Handle chat selection from the chat list."""
@@ -309,6 +306,31 @@ class KarereWindow(Adw.ApplicationWindow):
         self.load_message_history(jid)
 
         print(f"Selected chat: {jid}")
+
+    def on_chat_selected_from_list(self, row):
+        """Handle chat selection from ChatListPage."""
+        if row is None:
+            return
+
+        chat_row = row
+        jid = chat_row.jid
+        self._current_chat_jid = jid
+
+        # Navigate to existing page (should already exist from add_or_update_chat)
+        if jid in self._chat_pages:
+            chat_page = self._chat_pages[jid]
+            print(f"DEBUG: Navigating to existing page for {jid}")
+
+            # Use set_content to show the chat page
+            self.split_view.set_content(chat_page)
+            print(f"DEBUG: Successfully set chat page as content")
+        else:
+            print(f"ERROR: No navigation page found for {jid}")
+
+        # Load message history for this chat
+        self.load_message_history(jid)
+
+        print(f"Selected chat from list: {jid}")
 
     def create_chat_page(self, jid):
         """Create a navigation page for a chat."""
@@ -492,29 +514,14 @@ class KarereWindow(Adw.ApplicationWindow):
                 return f"+{phone_number}"
         return jid
 
-    def add_or_update_chat(self, jid, last_message, timestamp=None, unread_count=0):
-        print(f"DEBUG: add_or_update_chat called with jid={jid}, last_message='{last_message}'")
-        if jid in self._chat_rows:
-            print(f"DEBUG: Updating existing chat row for {jid}")
-            self._chat_rows[jid].update_last_message(last_message, timestamp)
-            if unread_count > 0:
-                self._chat_rows[jid].update_unread_count(unread_count)
-        else:
-            print(f"DEBUG: Creating new chat row for {jid}")
-            new_row = ChatRow(jid, last_message, timestamp, unread_count)
-            self._chat_rows[jid] = new_row
-            self.chat_list_box.prepend(new_row)
-            print(f"DEBUG: Added chat row to list box. Total chat rows: {len(self._chat_rows)}")
+    def add_or_update_chat(self, jid, last_message, timestamp=None, unread_count=0, contact_name=None, avatar_base64=None):
+        # Use ChatListPage to add or update chat
+        self.chat_list_page.add_or_update_chat(jid, last_message, timestamp, unread_count, contact_name, avatar_base64)
 
-            # Force visibility
-            new_row.set_visible(True)
-            print(f"DEBUG: Chat row visibility set to True")
-
-            # Create navigation page for this chat but don't push it yet
-            print(f"DEBUG: Creating navigation page for {jid}")
+        # Create navigation page for this chat if it doesn't exist
+        if jid not in self._chat_pages:
             chat_page = self.create_chat_page(jid)
             self._chat_pages[jid] = chat_page
-            print(f"DEBUG: Navigation page created for {jid} (not pushed yet)")
 
         # If this is the currently selected chat, add the message to the view
         if jid == self._current_chat_jid:
@@ -522,13 +529,13 @@ class KarereWindow(Adw.ApplicationWindow):
 
     def show_reconnecting_view(self):
         """Switches to the reconnecting page."""
-        self.navigation_view.pop_to_page(self.reconnecting_page)
+        self.split_view.set_content(self.reconnecting_page)
         self.reconnecting_spinner.start()
         print("Switched to reconnecting view.")
 
     def show_qr_view(self):
         """Switches to the QR code page."""
-        self.navigation_view.pop_to_page(self.qr_page)
+        self.split_view.set_content(self.qr_page)
         self.qr_spinner.start()
         print("Switched to QR view.")
 
@@ -548,47 +555,116 @@ class KarereWindow(Adw.ApplicationWindow):
         print("QR Code displayed.")
 
     def show_chat_view(self):
-        """Enable sidebar and switch to welcome page."""
+        """Enable sidebar with ChatListPage and switch to welcome page."""
         print("Enabling sidebar and switching to chat view.")
+
+        # Set ChatListPage as sidebar
+        self.split_view.set_sidebar(self.chat_list_page)
 
         # Enable sidebar (show chat list)
         self.split_view.set_collapsed(False)
 
         # Switch to welcome page
-        self.navigation_view.push(self.welcome_page)
-        print("Switched to chat view with welcome page.")
+        self.split_view.set_content(self.welcome_page)
+        print("Switched to chat view with welcome page and ChatListPage sidebar.")
 
-        # Remove the temporary pages (loading, QR, reconnecting) from navigation stack
-        # They will remain in the UI but won't be accessible via back navigation
-        self._remove_temporary_pages()
+    def show_download_progress_view(self, message="Downloading your WhatsApp data..."):
+        """Switch to the download progress page."""
+        self.split_view.set_content(self.download_progress_page)
+        self.download_progress_label.set_text("Starting download...")
+        self.download_details_label.set_text(message)
+        self.download_progress_bar.set_fraction(0.0)
+        self.download_spinner.start()
 
-        # Debug: Check if chat list box is visible and has children
-        print(f"DEBUG: Chat list box visible: {self.chat_list_box.get_visible()}")
-        print(f"DEBUG: Chat list box parent: {self.chat_list_box.get_parent()}")
+        # Reset counters
+        self.chats_count_label.set_text("0")
+        self.messages_count_label.set_text("0")
+        self.avatars_count_label.set_text("0")
 
-        # Debug: Check split view properties
-        print(f"DEBUG: Split view visible: {self.split_view.get_visible()}")
-        print(f"DEBUG: Split view collapsed: {self.split_view.get_collapsed()}")
-        print(f"DEBUG: Split view show-content: {self.split_view.get_show_content()}")
+        print("Switched to download progress view.")
 
-        # Count children in chat list box
-        child_count = 0
-        child = self.chat_list_box.get_first_child()
-        while child:
-            child_count += 1
-            print(f"DEBUG: Chat list child {child_count}: {type(child).__name__}, visible: {child.get_visible()}")
-            child = child.get_next_sibling()
-        print(f"DEBUG: Total children in chat list box: {child_count}")
-        print(f"DEBUG: Total chat rows in _chat_rows: {len(self._chat_rows)}")
+    def show_sync_progress_view(self, message="Syncing your WhatsApp data..."):
+        """Switch to the sync progress page."""
+        self.split_view.set_content(self.sync_progress_page)
+        self.sync_progress_label.set_text("Starting sync...")
+        self.sync_details_label.set_text(message)
+        self.sync_progress_bar.set_fraction(0.0)
+        self.sync_spinner.start()
 
-        # Debug: Check navigation view and welcome page
-        print(f"DEBUG: Navigation view visible: {self.navigation_view.get_visible()}")
-        print(f"DEBUG: Welcome page visible: {self.welcome_page.get_visible()}")
-        current_page = self.navigation_view.get_visible_page()
-        print(f"DEBUG: Current visible page in navigation view: {current_page}")
-        if current_page:
-            print(f"DEBUG: Current page title: {current_page.get_title()}")
-            print(f"DEBUG: Current page tag: {current_page.get_tag()}")
+        # Reset counters
+        self.sync_chats_count_label.set_text("0")
+        self.sync_messages_count_label.set_text("0")
+        self.sync_contacts_count_label.set_text("0")
+
+        print("Switched to sync progress view.")
+
+    def update_download_progress(self, progress_data):
+        """Update the download progress display."""
+        stage = progress_data.get('stage', 'downloading')
+        message = progress_data.get('message', 'Downloading...')
+        progress = progress_data.get('progress', 0) / 100.0  # Convert to 0-1 range
+        stats = progress_data.get('stats', {})
+
+        self.download_progress_label.set_text(message)
+        self.download_progress_bar.set_fraction(progress)
+
+        # Update statistics if available
+        if 'chats' in stats:
+            self.chats_count_label.set_text(str(stats.get('chats', 0)))
+        if 'messages' in stats:
+            self.messages_count_label.set_text(str(stats.get('messages', 0)))
+        if 'avatars' in stats:
+            self.avatars_count_label.set_text(str(stats.get('avatars', 0)))
+
+        # Update details based on stage
+        if stage == 'starting':
+            self.download_details_label.set_text("Initializing data download...")
+        elif stage == 'downloading':
+            processed = progress_data.get('processedChats', 0)
+            total = progress_data.get('totalChats', 0)
+            if total > 0:
+                self.download_details_label.set_text(f"Processing {processed}/{total} chats")
+            else:
+                self.download_details_label.set_text("Downloading data...")
+        elif stage == 'complete':
+            self.download_details_label.set_text("Download complete!")
+            self.download_spinner.stop()
+
+        print(f"Updated download progress: {progress*100:.1f}% - {message}")
+
+    def update_sync_progress(self, progress_data):
+        """Update the sync progress display."""
+        stage = progress_data.get('stage', 'syncing')
+        message = progress_data.get('message', 'Syncing...')
+        progress = progress_data.get('progress', 0) / 100.0  # Convert to 0-1 range
+        stats = progress_data.get('stats', {})
+
+        self.sync_progress_label.set_text(message)
+        self.sync_progress_bar.set_fraction(progress)
+
+        # Update statistics if available
+        if 'updatedChats' in stats:
+            self.sync_chats_count_label.set_text(str(stats.get('updatedChats', 0)))
+        if 'newMessages' in stats:
+            self.sync_messages_count_label.set_text(str(stats.get('newMessages', 0)))
+        if 'updatedContacts' in stats:
+            self.sync_contacts_count_label.set_text(str(stats.get('updatedContacts', 0)))
+
+        # Update details based on stage
+        if stage == 'starting':
+            self.sync_details_label.set_text("Checking for updates...")
+        elif stage == 'syncing':
+            processed = progress_data.get('processedChats', 0)
+            total = progress_data.get('totalChats', 0)
+            if total > 0:
+                self.sync_details_label.set_text(f"Syncing {processed}/{total} chats")
+            else:
+                self.sync_details_label.set_text("Syncing data...")
+        elif stage == 'complete':
+            self.sync_details_label.set_text("Sync complete!")
+            self.sync_spinner.stop()
+
+        print(f"Updated sync progress: {progress*100:.1f}% - {message}")
 
     def show_toast(self, message):
         toast_overlay = self.get_content()

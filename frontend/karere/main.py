@@ -218,6 +218,16 @@ class KarereApplication(Adw.Application):
         self.ws_client.connect('message-sent', self.on_message_sent)
         self.ws_client.connect('message-error', self.on_message_error)
         self.ws_client.connect('message-history', self.on_message_history)
+        # Connect new download and sync signals
+        self.ws_client.connect('initial-download-started', self.on_initial_download_started)
+        self.ws_client.connect('download-progress', self.on_download_progress)
+        self.ws_client.connect('download-complete', self.on_download_complete)
+        self.ws_client.connect('download-error', self.on_download_error)
+        self.ws_client.connect('sync-started', self.on_sync_started)
+        self.ws_client.connect('sync-progress', self.on_sync_progress)
+        self.ws_client.connect('sync-complete', self.on_sync_complete)
+        self.ws_client.connect('sync-error', self.on_sync_error)
+        self.ws_client.connect('chats-updated', self.on_chats_updated)
         self.ws_client.start()
         print("WebSocket client setup and started.")
 
@@ -235,7 +245,7 @@ class KarereApplication(Adw.Application):
         if self.win and hasattr(self.win, 'navigation_view') and self.win.navigation_view:
             current_page = self.win.navigation_view.get_visible_page()
             if current_page == self.win.reconnecting_page:
-                self.win.navigation_view.replace([self.win.loading_page])
+                self.win.navigation_view.pop_to_page(self.win.loading_page)
 
     def on_connection_closed(self, _):
         """Handler for when the connection to the backend is lost."""
@@ -255,11 +265,47 @@ class KarereApplication(Adw.Application):
         """Handler for receiving the initial list of chats."""
         print(f"Received {len(chats)} initial chats.")
         for chat in chats:
-            self.win.add_or_update_chat(chat['jid'], chat['lastMessage'])
+            # Use contact name if available and different from JID, otherwise use formatted phone number
+            name = chat.get('name')
+            jid = chat['jid']
+            if name and name != jid:
+                contact_name = name
+            else:
+                # Format the phone number from JID for display
+                contact_name = self.format_phone_number(jid)
 
-    def on_new_message(self, _, from_jid, body):
+            avatar_base64 = chat.get('avatarBase64')
+            # Don't pass 'None' string, pass actual None
+            if avatar_base64 == 'None':
+                avatar_base64 = None
+
+            self.win.add_or_update_chat(
+                chat['jid'],
+                chat['lastMessage'],
+                chat.get('timestamp'),
+                chat.get('unreadCount', 0),
+                contact_name,
+                avatar_base64
+            )
+
+    def on_new_message(self, _, from_jid, body, timestamp=None, contact_name=None, avatar_path=None):
         print(f"New message from {from_jid}: {body}")
-        self.win.add_or_update_chat(from_jid, body)
+        # Use provided timestamp or current time
+        if timestamp is None:
+            import time
+            timestamp = time.time() * 1000
+
+        # Don't pass 'None' string, pass actual None
+        if avatar_path == 'None':
+            avatar_path = None
+
+        # Use contact name if provided, otherwise format phone number
+        if contact_name and contact_name != from_jid:
+            display_name = contact_name
+        else:
+            display_name = self.format_phone_number(from_jid)
+
+        self.win.add_or_update_chat(from_jid, body, timestamp, 0, display_name, avatar_path)
 
     def on_message_sent(self, _, to_jid, message):
         """Handler for when a message is successfully sent."""
@@ -276,6 +322,119 @@ class KarereApplication(Adw.Application):
         print(f"Received {len(messages)} messages for {jid}")
         # Load message history into the window
         self.win.load_message_history_from_backend(jid, messages)
+
+    def on_initial_download_started(self, _, message):
+        """Handle initial download started signal."""
+        print(f"Initial download started: {message}")
+        self.win.show_download_progress_view(message)
+
+    def on_download_progress(self, _, progress_data):
+        """Handle download progress updates."""
+        print(f"Download progress: {progress_data}")
+        self.win.update_download_progress(progress_data)
+
+    def on_download_complete(self, _, completion_data):
+        """Handle download completion."""
+        print(f"Download complete: {completion_data}")
+        stats = completion_data.get('stats', {})
+        message = completion_data.get('message', 'Download complete!')
+
+        # Show completion message briefly, then switch to chat view
+        self.win.show_toast(f"{message} - {stats.get('chats', 0)} chats, {stats.get('messages', 0)} messages")
+
+        # Switch to chat view after a short delay
+        from gi.repository import GLib
+        GLib.timeout_add_seconds(2, self._switch_to_chat_view_after_download)
+
+    def on_download_error(self, _, error_message):
+        """Handle download errors."""
+        print(f"Download error: {error_message}")
+        self.win.show_toast(f"Download failed: {error_message}")
+        # Stay on download page to show error state
+
+    def on_sync_started(self, _, message):
+        """Handle sync started signal."""
+        print(f"Sync started: {message}")
+        self.win.show_sync_progress_view(message)
+
+    def on_sync_progress(self, _, progress_data):
+        """Handle sync progress updates."""
+        print(f"Sync progress: {progress_data}")
+        self.win.update_sync_progress(progress_data)
+
+    def on_sync_complete(self, _, message):
+        """Handle sync completion."""
+        print(f"Sync complete: {message}")
+        self.win.show_toast("Sync complete!")
+
+        # Switch to chat view after sync
+        from gi.repository import GLib
+        GLib.timeout_add_seconds(1, self._switch_to_chat_view_after_sync)
+
+    def on_sync_error(self, _, error_message):
+        """Handle sync errors."""
+        print(f"Sync error: {error_message}")
+        self.win.show_toast(f"Sync failed: {error_message}")
+        # Switch to chat view even if sync failed
+        from gi.repository import GLib
+        GLib.timeout_add_seconds(2, self._switch_to_chat_view_after_sync)
+
+    def on_chats_updated(self, _, chats):
+        """Handle updated chat list from backend."""
+        print(f"Chats updated: {len(chats)} chats")
+        # Process updated chats similar to initial chats
+        for chat in chats:
+            jid = chat.get('jid')
+            name = chat.get('name')
+            last_message = chat.get('lastMessage', 'No messages yet')
+            timestamp = chat.get('timestamp')
+            unread_count = chat.get('unreadCount', 0)
+            avatar_path = chat.get('avatarPath')
+            # Don't pass 'None' string, pass actual None
+            if avatar_path == 'None':
+                avatar_path = None
+
+            if jid:
+                # Use contact name if available and different from JID, otherwise use formatted phone number
+                if name and name != jid:
+                    contact_name = name
+                else:
+                    contact_name = self.format_phone_number(jid)
+
+                self.win.add_or_update_chat(jid, last_message, timestamp, unread_count, contact_name, avatar_path)
+
+    def _switch_to_chat_view_after_download(self):
+        """Switch to chat view after download completion."""
+        self.win.show_chat_view()
+        return False  # Don't repeat
+
+    def format_phone_number(self, jid):
+        """Format a phone number from JID for display."""
+        if '@' in jid:
+            phone = jid.split('@')[0]
+            if phone.startswith('55'):  # Brazilian number
+                if len(phone) >= 11:
+                    return f"+{phone[:2]} ({phone[2:4]}) {phone[4:9]}-{phone[9:]}"
+                else:
+                    return f"+{phone}"
+            elif phone.startswith('351'):  # Portuguese number
+                if len(phone) >= 9:
+                    return f"+{phone[:3]} {phone[3:6]} {phone[6:]}"
+                else:
+                    return f"+{phone}"
+            elif phone.startswith('1'):  # US/Canada number
+                if len(phone) >= 11:
+                    return f"+{phone[0]} ({phone[1:4]}) {phone[4:7]}-{phone[7:]}"
+                else:
+                    return f"+{phone}"
+            else:
+                return f"+{phone}"
+        return jid
+
+    def _switch_to_chat_view_after_sync(self):
+        """Switch to chat view after sync completion."""
+        self.win.show_chat_view()
+        return False  # Don't repeat
 
     def load_css(self):
         """Load CSS styling for the application."""

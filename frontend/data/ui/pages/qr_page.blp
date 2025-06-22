@@ -1,0 +1,36 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.NavigationPage qr_page {
+  title: "QR Code";
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar qr_header {
+      title-widget: Label {
+        label: "Scan QR Code";
+      };
+    }
+
+    content: Adw.StatusPage {
+      title: "Scan QR Code";
+      description: "Open WhatsApp on your phone and scan this QR code to connect.";
+      icon-name: "qr-code-symbolic";
+
+      child: Overlay {
+        child: Image qr_image {
+          width-request: 250;
+          height-request: 250;
+          visible: false;
+        };
+
+        [overlay]
+        Spinner qr_spinner {
+          spinning: true;
+          halign: center;
+          valign: center;
+        }
+      };
+    };
+  };
+}

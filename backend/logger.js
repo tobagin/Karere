@@ -158,6 +158,16 @@ export const errorHandler = {
         };
     },
     
+    // Handle and log avatar errors
+    avatar: (error, context = '') => {
+        log.error(`Avatar error${context ? ` in ${context}` : ''}`, error, { type: 'avatar' });
+        return {
+            type: 'avatar_error',
+            message: 'Avatar processing error',
+            details: error?.message || 'Unknown error'
+        };
+    },
+
     // Generic error handler
     generic: (error, context = '') => {
         log.error(`Generic error${context ? ` in ${context}` : ''}`, error);

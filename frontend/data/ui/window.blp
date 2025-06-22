@@ -1,0 +1,64 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $KarereWindow : Adw.ApplicationWindow {
+  default-width: 1200;
+  default-height: 800;
+  title: "Karere";
+
+  content: Adw.ToastOverlay toast_overlay {
+    child: Adw.NavigationSplitView split_view {
+      show-content: true;
+      collapsed: true;
+      sidebar-width-fraction: 0.3;
+
+      [sidebar]
+      Box sidebar_content {
+        orientation: vertical;
+        hexpand: true;
+        vexpand: true;
+
+        Adw.HeaderBar sidebar_header {
+          title-widget: Label {
+            label: "Chats";
+          };
+
+          [end]
+          ToggleButton search_button {
+            icon-name: "system-search-symbolic";
+            tooltip-text: "Search chats";
+          }
+        }
+
+        SearchBar search_bar {
+          child: SearchEntry search_entry {
+            placeholder-text: "Search chats...";
+          };
+        }
+
+        ListBox chat_list_box {
+          selection-mode: single;
+          hexpand: true;
+          vexpand: true;
+        }
+      }
+      
+      [content]
+      Box main_content {
+        orientation: vertical;
+
+        Adw.HeaderBar main_header {
+          title-widget: Adw.WindowTitle {
+            title: "Karere";
+            subtitle: "WhatsApp Gtk4 Client";
+          };
+        }
+
+        Adw.NavigationView navigation_view {
+          hexpand: true;
+          vexpand: true;
+        }
+      }
+    };
+  };
+}

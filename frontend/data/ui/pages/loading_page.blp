@@ -1,0 +1,28 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.NavigationPage loading_page {
+  title: "Loading";
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar loading_header {
+      title-widget: Adw.WindowTitle {
+        title: "Karere";
+        subtitle: "Connecting to backend";
+      };
+    }
+
+    content: Adw.StatusPage {
+      title: "Connecting to backend";
+      description: "Please wait while we establish a connection...";
+      icon-name: "network-wireless-symbolic";
+
+      child: Spinner loading_spinner {
+        spinning: true;
+        width-request: 48;
+        height-request: 48;
+      };
+    };
+  };
+}

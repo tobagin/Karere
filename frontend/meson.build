@@ -14,6 +14,41 @@ pkgdatadir = join_paths(get_option('datadir'), meson.project_name())
 # --- GSettings Schema ---
 gnome.compile_schemas()
 
+# --- Blueprint Compilation ---
+# Find blueprint-compiler
+blueprint_compiler = find_program('blueprint-compiler', required: true)
+
+# List all .blp files
+blp_files = [
+  'data/ui/window.blp',
+  'data/ui/chat_row.blp',
+  'data/ui/menus/chat_row_menu.blp',
+  'data/ui/menus/chat_page_menu.blp',
+  'data/ui/menus/main_menu.blp',
+  'data/ui/menus/add_attachment_menu.blp',
+  'data/ui/pages/loading_page.blp',
+  'data/ui/pages/qr_page.blp',
+  'data/ui/pages/reconnecting_page.blp',
+  'data/ui/pages/welcome_page.blp',
+  'data/ui/pages/chat_page.blp',
+  'data/ui/pages/chat_list_page.blp',
+  'data/ui/dialogs/about.blp',
+  'data/ui/dialogs/settings.blp',
+]
+
+# Compile .blp files to .ui files
+ui_files = []
+foreach blp_file : blp_files
+  ui_file = blp_file.replace('.blp', '.ui')
+  ui_files += custom_target(
+    ui_file.underscorify(),
+    input: blp_file,
+    output: ui_file.split('/')[-1],
+    command: [blueprint_compiler, 'compile', '--output', '@OUTPUT@', '@INPUT@'],
+    build_by_default: true,
+  )
+endforeach
+
 # --- Resources ---
 # Use development gresource if building for development app ID
 gresource_file = application_id.endswith('.Devel') ? 'data/karere-devel.gresource.xml' : 'data/karere.gresource.xml'
@@ -23,7 +58,8 @@ gnome.compile_resources('karere-resources',
   gresource_bundle: true,
   install: true,
   install_dir: pkgdatadir,
-  source_dir: 'data'
+  source_dir: ['data', meson.current_build_dir()],
+  dependencies: ui_files
 )
 
 # --- Python Sources ---
@@ -31,6 +67,8 @@ py_sources = [
   'karere/main.py',
   'karere/window.py',
   'karere/websocket_client.py',
+  'karere/chat_list_page.py',
+  'karere/chat_row.py',
   'karere/__init__.py',
 ]
 

@@ -1,0 +1,66 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $SettingsDialog : Adw.PreferencesDialog {
+  title: "Settings";
+
+  Adw.PreferencesPage {
+    title: "General";
+    icon-name: "applications-system-symbolic";
+
+    Adw.PreferencesGroup {
+      title: "Appearance";
+
+      Adw.SwitchRow dark_mode_switch {
+        title: "Dark Mode";
+        subtitle: "Use dark theme";
+      }
+
+      Adw.ComboRow theme_combo {
+        title: "Theme";
+        subtitle: "Choose application theme";
+
+        model: StringList {
+          strings [
+            "System",
+            "Light",
+            "Dark"
+          ]
+        };
+      }
+    }
+
+    Adw.PreferencesGroup {
+      title: "Notifications";
+
+      Adw.SwitchRow notifications_switch {
+        title: "Enable Notifications";
+        subtitle: "Show desktop notifications for new messages";
+      }
+
+      Adw.SwitchRow sound_switch {
+        title: "Notification Sounds";
+        subtitle: "Play sound for new messages";
+      }
+    }
+  }
+
+  Adw.PreferencesPage {
+    title: "Privacy";
+    icon-name: "security-high-symbolic";
+
+    Adw.PreferencesGroup {
+      title: "Message Privacy";
+
+      Adw.SwitchRow read_receipts_switch {
+        title: "Read Receipts";
+        subtitle: "Send read receipts to contacts";
+      }
+
+      Adw.SwitchRow typing_indicators_switch {
+        title: "Typing Indicators";
+        subtitle: "Show when you're typing";
+      }
+    }
+  }
+}

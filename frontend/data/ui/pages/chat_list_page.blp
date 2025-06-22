@@ -1,0 +1,65 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $KarereChatListPage : Adw.NavigationPage {
+  title: "Chats";
+
+  child: Box {
+    orientation: vertical;
+
+    HeaderBar {
+      [start]
+      MenuButton {
+        icon-name: "open-menu-symbolic";
+        tooltip-text: _("Main menu");
+      }
+
+      title-widget: Adw.WindowTitle {
+        title: _("Chats");
+        subtitle: _("User Complete Name");
+      };
+
+      [end]
+      ToggleButton search {
+        icon-name: "edit-find-symbolic";
+        tooltip-text: _("Search chats");
+      }
+    }
+
+    ActionBar {
+      Button new_chat {
+        tooltip-text: _("New chat");
+        icon-name: "chat-message-new-symbolic";
+      }
+
+      Button contacts {
+        tooltip-text: _("View contacts");
+        icon-name: "org.gnome.Contacts-symbolic";
+      }
+
+      MenuButton chats_menu {
+        icon-name: "view-more-symbolic";
+        tooltip-text: _("Chat options");
+      }
+    }
+
+    SearchBar search_bar {
+      child: SearchEntry search_entry {
+        placeholder-text: _("Search chats...");
+      };
+    }
+
+    ScrolledWindow {
+      vexpand: true;
+      hscrollbar-policy: never;
+
+      child: ListBox chats_listbox {
+        selection-mode: single;
+
+        styles [
+          "navigation-sidebar"
+        ]
+      };
+    }
+  };
+}

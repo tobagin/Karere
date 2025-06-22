@@ -3,25 +3,28 @@
 <gresources>
   <gresource prefix="/io/github/tobagin/Karere">
     <!-- Main UI Files -->
-    <file>ui/window.ui</file>
-    <file>ui/chat_row.ui</file>
+    <file alias="ui/window.ui">window.ui</file>
+    <file alias="ui/chat_row.ui">chat_row.ui</file>
 
     <!-- Menu UI Files -->
-    <file>ui/menus/chat_row_menu.ui</file>
-    <file>ui/menus/chat_page_menu.ui</file>
-    <file>ui/menus/main_menu.ui</file>
-    <file>ui/menus/add_attachment_menu.ui</file>
+    <file alias="ui/menus/chat_row_menu.ui">chat_row_menu.ui</file>
+    <file alias="ui/menus/chat_page_menu.ui">chat_page_menu.ui</file>
+    <file alias="ui/menus/main_menu.ui">main_menu.ui</file>
+    <file alias="ui/menus/add_attachment_menu.ui">add_attachment_menu.ui</file>
 
     <!-- Page UI Files -->
-    <file>ui/pages/loading_page.ui</file>
-    <file>ui/pages/qr_page.ui</file>
-    <file>ui/pages/reconnecting_page.ui</file>
-    <file>ui/pages/welcome_page.ui</file>
-    <file>ui/pages/chat_page.ui</file>
+    <file alias="ui/pages/loading_page.ui">ui/pages/loading_page.ui</file>
+    <file alias="ui/pages/qr_page.ui">ui/pages/qr_page.ui</file>
+    <file alias="ui/pages/reconnecting_page.ui">ui/pages/reconnecting_page.ui</file>
+    <file alias="ui/pages/welcome_page.ui">ui/pages/welcome_page.ui</file>
+    <file alias="ui/pages/chat_page.ui">ui/pages/chat_page.ui</file>
+    <file alias="ui/pages/chat_list_page.ui">ui/pages/chat_list_page.ui</file>
+    <file alias="ui/pages/download_progress_page.ui">ui/pages/download_progress_page.ui</file>
+    <file alias="ui/pages/sync_progress_page.ui">ui/pages/sync_progress_page.ui</file>
 
     <!-- Dialog UI Files -->
-    <file>ui/dialogs/about.ui</file>
-    <file>ui/dialogs/settings.ui</file>
+    <file alias="ui/dialogs/about.ui">about.ui</file>
+    <file alias="ui/dialogs/settings.ui">settings.ui</file>
 
     <!-- Styles -->
     <file>style.css</file>

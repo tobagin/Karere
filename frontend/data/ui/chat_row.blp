@@ -1,0 +1,97 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $KarereChatRow : Gtk.ListBoxRow {
+  activatable: true;
+  selectable: true;
+
+  Box content_box {
+    orientation: horizontal;
+    spacing: 12;
+    margin-start: 12;
+    margin-end: 12;
+    margin-top: 8;
+    margin-bottom: 8;
+
+    // Avatar
+    Adw.Avatar avatar {
+      size: 48;
+      valign: center;
+    }
+
+    // Content area
+    Box {
+      orientation: vertical;
+      spacing: 4;
+      hexpand: true;
+      valign: center;
+
+      // Top row: name and time
+      Box {
+        orientation: horizontal;
+        spacing: 6;
+
+        Label name_label {
+          label: "Contact Name";
+          hexpand: true;
+          xalign: 0;
+          ellipsize: end;
+          styles ["heading"]
+        }
+
+        Label time_label {
+          label: "12:34";
+          styles ["dim-label", "caption"]
+          valign: start;
+        }
+      }
+
+      // Bottom row: last message and indicators
+      Box {
+        orientation: horizontal;
+        spacing: 6;
+
+        Label last_message_label {
+          label: "Last message content...";
+          hexpand: true;
+          xalign: 0;
+          ellipsize: end;
+          max-width-chars: 30;
+          styles ["dim-label"]
+        }
+
+        // Status and indicator icons
+        Box {
+          orientation: horizontal;
+          spacing: 4;
+          valign: center;
+
+          Image status_icon {
+            icon-name: "emblem-ok-symbolic";
+            visible: false;
+            styles ["status-icon"]
+          }
+
+          Image muted_icon {
+            icon-name: "audio-volume-muted-symbolic";
+            visible: false;
+            styles ["dim-label"]
+          }
+
+          Image pinned_icon {
+            icon-name: "view-pin-symbolic";
+            visible: false;
+            styles ["accent"]
+          }
+
+          Label unread_badge {
+            label: "1";
+            visible: false;
+            styles ["badge", "unread-badge"]
+            valign: center;
+          }
+        }
+      }
+    }
+  }
+}

@@ -97,7 +97,7 @@ class Database {
                 jid TEXT PRIMARY KEY,
                 name TEXT,
                 phone_number TEXT,
-                avatar_path TEXT,
+                avatar_base64 TEXT,
                 is_blocked BOOLEAN DEFAULT FALSE,
                 created_at INTEGER DEFAULT (strftime('%s', 'now')),
                 updated_at INTEGER DEFAULT (strftime('%s', 'now'))
@@ -128,7 +128,27 @@ class Database {
             await this.run(index);
         }
 
+        // Run migrations for existing databases
+        await this.runMigrations();
+
         log.info('Database tables and indexes created successfully');
+    }
+
+    async runMigrations() {
+        try {
+            // Check if avatar_base64 column exists in contacts table
+            const tableInfo = await this.all("PRAGMA table_info(contacts)");
+            const hasAvatarBase64 = tableInfo.some(column => column.name === 'avatar_base64');
+
+            if (!hasAvatarBase64) {
+                log.info('Adding avatar_base64 column to contacts table');
+                await this.run('ALTER TABLE contacts ADD COLUMN avatar_base64 TEXT');
+                log.info('Migration completed: avatar_base64 column added');
+            }
+        } catch (error) {
+            log.warn('Migration failed', { error: error.message });
+            // Don't throw - migrations should be non-fatal
+        }
     }
 
     // Promisify database operations
@@ -191,50 +211,101 @@ class Database {
 
     async getChats(limit = 50) {
         const timer = performance.start('get_chats');
-        
+
         try {
             const sql = `
-                SELECT c.*, m.content as last_message_content, m.timestamp as last_message_timestamp
+                SELECT c.*,
+                       m.content as last_message_content,
+                       m.timestamp as last_message_timestamp,
+                       m.from_me as last_message_from_me,
+                       cont.name as contact_name,
+                       cont.avatar_base64 as contact_avatar_base64,
+                       cont.phone_number as contact_phone_number
                 FROM chats c
                 LEFT JOIN messages m ON c.last_message_id = m.id
+                LEFT JOIN contacts cont ON c.jid = cont.jid
                 WHERE c.is_archived = FALSE
                 ORDER BY c.updated_at DESC
                 LIMIT ?
             `;
-            
+
             const chats = await this.all(sql, [limit]);
             timer.end({ count: chats.length });
-            
+
             return chats;
-            
+
         } catch (error) {
             timer.end({ error: true });
             throw errorHandler.database(error, 'getChats');
         }
     }
 
+    async getChatWithContact(jid) {
+        const timer = performance.start('get_chat_with_contact');
+
+        try {
+            const sql = `
+                SELECT c.*,
+                       m.content as last_message_content,
+                       m.timestamp as last_message_timestamp,
+                       m.from_me as last_message_from_me,
+                       cont.name as contact_name,
+                       cont.avatar_base64 as contact_avatar_base64,
+                       cont.phone_number as contact_phone_number
+                FROM chats c
+                LEFT JOIN messages m ON c.last_message_id = m.id
+                LEFT JOIN contacts cont ON c.jid = cont.jid
+                WHERE c.jid = ?
+            `;
+
+            const chat = await this.get(sql, [jid]);
+            timer.end({ found: !!chat });
+
+            return chat;
+
+        } catch (error) {
+            timer.end({ error: true });
+            throw errorHandler.database(error, 'getChatWithContact');
+        }
+    }
+
     // Message operations
-    async saveMessage(id, chatJid, fromMe, content, timestamp, messageType = 'text', status = 'sent') {
+    async saveMessage(id, chatJid, fromMe, content, timestamp, messageType = 'text', status = 'sent', senderName = null) {
         const timer = performance.start('save_message');
-        
+
         try {
             const sql = `
                 INSERT OR REPLACE INTO messages (id, chat_jid, from_me, message_type, content, timestamp, status)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             `;
-            
+
             await this.run(sql, [id, chatJid, fromMe, messageType, content, timestamp, status]);
-            
-            // Update chat's last message
-            await this.run(`
-                UPDATE chats 
+
+            // If this is an incoming message and we have sender name, save/update contact
+            if (!fromMe && senderName) {
+                await this.saveContact(chatJid, senderName);
+            }
+
+            // Update chat's last message and name if provided
+            const chatUpdateSql = senderName && !fromMe ? `
+                UPDATE chats
+                SET last_message_id = ?, last_message_timestamp = ?, name = COALESCE(?, name), updated_at = strftime('%s', 'now')
+                WHERE jid = ?
+            ` : `
+                UPDATE chats
                 SET last_message_id = ?, last_message_timestamp = ?, updated_at = strftime('%s', 'now')
                 WHERE jid = ?
-            `, [id, timestamp, chatJid]);
-            
+            `;
+
+            const chatUpdateParams = senderName && !fromMe ?
+                [id, timestamp, senderName, chatJid] :
+                [id, timestamp, chatJid];
+
+            await this.run(chatUpdateSql, chatUpdateParams);
+
             timer.end();
-            log.debug('Message saved', { id, chatJid, fromMe });
-            
+            log.debug('Message saved', { id, chatJid, fromMe, senderName });
+
         } catch (error) {
             timer.end({ error: true });
             throw errorHandler.database(error, 'saveMessage');
@@ -243,23 +314,72 @@ class Database {
 
     async getMessages(chatJid, limit = 50, offset = 0) {
         const timer = performance.start('get_messages');
-        
+
         try {
             const sql = `
-                SELECT * FROM messages 
-                WHERE chat_jid = ? 
-                ORDER BY timestamp DESC 
+                SELECT m.*,
+                       cont.name as sender_name,
+                       cont.avatar_base64 as sender_avatar_base64
+                FROM messages m
+                LEFT JOIN contacts cont ON m.chat_jid = cont.jid
+                WHERE m.chat_jid = ?
+                ORDER BY m.timestamp DESC
                 LIMIT ? OFFSET ?
             `;
-            
+
             const messages = await this.all(sql, [chatJid, limit, offset]);
             timer.end({ count: messages.length });
-            
+
             return messages.reverse(); // Return in chronological order
-            
+
         } catch (error) {
             timer.end({ error: true });
             throw errorHandler.database(error, 'getMessages');
+        }
+    }
+
+    async getMessagesWithSender(chatJid, limit = 50, offset = 0) {
+        const timer = performance.start('get_messages_with_sender');
+
+        try {
+            const sql = `
+                SELECT m.*,
+                       CASE
+                           WHEN m.from_me = 1 THEN 'You'
+                           ELSE COALESCE(cont.name, m.chat_jid)
+                       END as display_sender_name,
+                       cont.avatar_base64 as sender_avatar_base64
+                FROM messages m
+                LEFT JOIN contacts cont ON m.chat_jid = cont.jid
+                WHERE m.chat_jid = ?
+                ORDER BY m.timestamp DESC
+                LIMIT ? OFFSET ?
+            `;
+
+            const messages = await this.all(sql, [chatJid, limit, offset]);
+            timer.end({ count: messages.length });
+
+            return messages.reverse(); // Return in chronological order
+
+        } catch (error) {
+            timer.end({ error: true });
+            throw errorHandler.database(error, 'getMessagesWithSender');
+        }
+    }
+
+    async getMessage(messageId) {
+        const timer = performance.start('get_message');
+
+        try {
+            const sql = 'SELECT * FROM messages WHERE id = ?';
+            const message = await this.get(sql, [messageId]);
+
+            timer.end({ messageId, found: !!message });
+            return message;
+
+        } catch (error) {
+            timer.end({ error: true });
+            throw errorHandler.database(error, 'getMessage');
         }
     }
 
@@ -273,26 +393,164 @@ class Database {
     }
 
     // Contact operations
-    async saveContact(jid, name, phoneNumber = null) {
+    async saveContact(jid, name, phoneNumber = null, avatarBase64 = null) {
+        const timer = performance.start('save_contact');
+
         try {
             const sql = `
-                INSERT OR REPLACE INTO contacts (jid, name, phone_number, updated_at)
-                VALUES (?, ?, ?, strftime('%s', 'now'))
+                INSERT OR REPLACE INTO contacts (jid, name, phone_number, avatar_base64, updated_at)
+                VALUES (?, ?, ?, ?, strftime('%s', 'now'))
             `;
-            
-            await this.run(sql, [jid, name, phoneNumber]);
-            log.debug('Contact saved', { jid, name });
-            
+
+            await this.run(sql, [jid, name, phoneNumber, avatarBase64]);
+            timer.end();
+
+            log.debug('Contact saved', { jid, name, hasAvatarBase64: !!avatarBase64 });
+
         } catch (error) {
+            timer.end({ error: true });
             throw errorHandler.database(error, 'saveContact');
         }
     }
 
     async getContact(jid) {
+        const timer = performance.start('get_contact');
+
         try {
-            return await this.get('SELECT * FROM contacts WHERE jid = ?', [jid]);
+            const contact = await this.get('SELECT * FROM contacts WHERE jid = ?', [jid]);
+            timer.end({ found: !!contact });
+
+            return contact;
         } catch (error) {
+            timer.end({ error: true });
             throw errorHandler.database(error, 'getContact');
+        }
+    }
+
+    async getAllContacts(limit = 1000) {
+        const timer = performance.start('get_all_contacts');
+
+        try {
+            const sql = `
+                SELECT * FROM contacts
+                WHERE is_blocked = FALSE
+                ORDER BY name ASC, jid ASC
+                LIMIT ?
+            `;
+
+            const contacts = await this.all(sql, [limit]);
+            timer.end({ count: contacts.length });
+
+            return contacts;
+        } catch (error) {
+            timer.end({ error: true });
+            throw errorHandler.database(error, 'getAllContacts');
+        }
+    }
+
+    async updateContactAvatar(jid, avatarBase64) {
+        const timer = performance.start('update_contact_avatar');
+
+        try {
+            const sql = `
+                UPDATE contacts
+                SET avatar_base64 = ?, updated_at = strftime('%s', 'now')
+                WHERE jid = ?
+            `;
+
+            const result = await this.run(sql, [avatarBase64, jid]);
+            timer.end({ updated: result.changes > 0 });
+
+            if (result.changes > 0) {
+                log.debug('Contact avatar updated', { jid, hasAvatarBase64: !!avatarBase64 });
+            }
+
+            return result.changes > 0;
+        } catch (error) {
+            timer.end({ error: true });
+            throw errorHandler.database(error, 'updateContactAvatar');
+        }
+    }
+
+    async updateContactName(jid, name) {
+        const timer = performance.start('update_contact_name');
+
+        try {
+            const sql = `
+                UPDATE contacts
+                SET name = ?, updated_at = strftime('%s', 'now')
+                WHERE jid = ?
+            `;
+
+            const result = await this.run(sql, [name, jid]);
+            timer.end({ updated: result.changes > 0 });
+
+            if (result.changes > 0) {
+                log.debug('Contact name updated', { jid, name });
+            }
+
+            return result.changes > 0;
+        } catch (error) {
+            timer.end({ error: true });
+            throw errorHandler.database(error, 'updateContactName');
+        }
+    }
+
+    async searchContacts(query, limit = 50) {
+        const timer = performance.start('search_contacts');
+
+        try {
+            const sql = `
+                SELECT * FROM contacts
+                WHERE (name LIKE ? OR phone_number LIKE ? OR jid LIKE ?)
+                AND is_blocked = FALSE
+                ORDER BY
+                    CASE
+                        WHEN name LIKE ? THEN 1
+                        WHEN phone_number LIKE ? THEN 2
+                        ELSE 3
+                    END,
+                    name ASC
+                LIMIT ?
+            `;
+
+            const searchPattern = `%${query}%`;
+            const exactPattern = `${query}%`;
+
+            const contacts = await this.all(sql, [
+                searchPattern, searchPattern, searchPattern,
+                exactPattern, exactPattern,
+                limit
+            ]);
+
+            timer.end({ count: contacts.length, query });
+
+            return contacts;
+        } catch (error) {
+            timer.end({ error: true });
+            throw errorHandler.database(error, 'searchContacts');
+        }
+    }
+
+    async getContactsWithChats() {
+        const timer = performance.start('get_contacts_with_chats');
+
+        try {
+            const sql = `
+                SELECT DISTINCT c.*, ch.last_message_timestamp
+                FROM contacts c
+                INNER JOIN chats ch ON c.jid = ch.jid
+                WHERE c.is_blocked = FALSE
+                ORDER BY ch.last_message_timestamp DESC
+            `;
+
+            const contacts = await this.all(sql);
+            timer.end({ count: contacts.length });
+
+            return contacts;
+        } catch (error) {
+            timer.end({ error: true });
+            throw errorHandler.database(error, 'getContactsWithChats');
         }
     }
 

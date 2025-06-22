@@ -19,12 +19,22 @@ class WebSocketClient(GObject.Object):
         'connection-closed': (GObject.SignalFlags.RUN_FIRST, None, ()),
         'qr-received': (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         'status-update': (GObject.SignalFlags.RUN_FIRST, None, (str,)),
-        'new-message': (GObject.SignalFlags.RUN_FIRST, None, (str, str,)),
+        'new-message': (GObject.SignalFlags.RUN_FIRST, None, (str, str, GObject.TYPE_PYOBJECT, str, str,)),
         'initial-chats': (GObject.SignalFlags.RUN_FIRST, None, (GObject.TYPE_PYOBJECT,)),
         'baileys-ready': (GObject.SignalFlags.RUN_FIRST, None, ()),
         'message-sent': (GObject.SignalFlags.RUN_FIRST, None, (str, str,)),
         'message-error': (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         'message-history': (GObject.SignalFlags.RUN_FIRST, None, (str, GObject.TYPE_PYOBJECT,)),
+        # New signals for data downloading and syncing
+        'initial-download-started': (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        'download-progress': (GObject.SignalFlags.RUN_FIRST, None, (GObject.TYPE_PYOBJECT,)),
+        'download-complete': (GObject.SignalFlags.RUN_FIRST, None, (GObject.TYPE_PYOBJECT,)),
+        'download-error': (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        'sync-started': (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        'sync-progress': (GObject.SignalFlags.RUN_FIRST, None, (GObject.TYPE_PYOBJECT,)),
+        'sync-complete': (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        'sync-error': (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        'chats-updated': (GObject.SignalFlags.RUN_FIRST, None, (GObject.TYPE_PYOBJECT,)),
     }
 
     def __init__(self, url="ws://localhost:8765"):
@@ -66,7 +76,12 @@ class WebSocketClient(GObject.Object):
             elif msg_type == 'baileys_ready':
                 GLib.idle_add(self.emit, 'baileys-ready')
             elif msg_type == 'newMessage':
-                GLib.idle_add(self.emit, 'new-message', msg_data['from'], msg_data['body'])
+                GLib.idle_add(self.emit, 'new-message',
+                             msg_data['from'],
+                             msg_data['body'],
+                             msg_data.get('timestamp'),
+                             msg_data.get('contactName'),
+                             msg_data.get('avatarPath'))
             elif msg_type == 'initial_chats':
                 GLib.idle_add(self.emit, 'initial-chats', msg_data['chats'])
             elif msg_type == 'message_sent':
@@ -75,6 +90,25 @@ class WebSocketClient(GObject.Object):
                 GLib.idle_add(self.emit, 'message-error', msg_data['error'])
             elif msg_type == 'message_history':
                 GLib.idle_add(self.emit, 'message-history', msg_data['jid'], msg_data['messages'])
+            # Handle new download and sync signals
+            elif msg_type == 'initial_download_started':
+                GLib.idle_add(self.emit, 'initial-download-started', msg_data.get('message', 'Starting download...'))
+            elif msg_type == 'download_progress':
+                GLib.idle_add(self.emit, 'download-progress', msg_data)
+            elif msg_type == 'download_complete':
+                GLib.idle_add(self.emit, 'download-complete', msg_data)
+            elif msg_type == 'download_error':
+                GLib.idle_add(self.emit, 'download-error', msg_data.get('message', 'Download failed'))
+            elif msg_type == 'sync_started':
+                GLib.idle_add(self.emit, 'sync-started', msg_data.get('message', 'Starting sync...'))
+            elif msg_type == 'sync_progress':
+                GLib.idle_add(self.emit, 'sync-progress', msg_data)
+            elif msg_type == 'sync_complete':
+                GLib.idle_add(self.emit, 'sync-complete', msg_data.get('message', 'Sync complete'))
+            elif msg_type == 'sync_error':
+                GLib.idle_add(self.emit, 'sync-error', msg_data.get('message', 'Sync failed'))
+            elif msg_type == 'chats_updated':
+                GLib.idle_add(self.emit, 'chats-updated', msg_data.get('chats', []))
         except Exception as e:
             print(f"Error processing message: {e}")
 

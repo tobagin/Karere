@@ -1,0 +1,27 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.NavigationPage reconnecting_page {
+  title: "Reconnecting";
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar reconnecting_header {
+      title-widget: Label {
+        label: "Reconnecting";
+      };
+    }
+
+    content: Adw.StatusPage {
+      title: "Reconnecting to WhatsApp";
+      description: "Connection lost. Attempting to reconnect...";
+      icon-name: "network-wireless-offline-symbolic";
+
+      child: Spinner reconnecting_spinner {
+        spinning: true;
+        width-request: 48;
+        height-request: 48;
+      };
+    };
+  };
+}
