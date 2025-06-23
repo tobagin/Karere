@@ -7,40 +7,9 @@ template $ChatPage : Adw.NavigationPage {
   child: Adw.ToolbarView {
     [top]
     Adw.HeaderBar chat_header {
-      title-widget: Box {
-        orientation: horizontal;
-        spacing: 12;
-
-        Adw.Avatar chat_avatar {
-          size: 32;
-          show-initials: true;
-        }
-
-        Box {
-          orientation: vertical;
-          valign: center;
-
-          Label chat_title {
-            label: "Contact Name";
-            halign: start;
-            ellipsize: end;
-
-            styles [
-              "heading"
-            ]
-          }
-
-          Label chat_subtitle {
-            label: "Online";
-            halign: start;
-            ellipsize: end;
-
-            styles [
-              "caption",
-              "dim-label"
-            ]
-          }
-        }
+      title-widget: Adw.WindowTitle chat_title_widget {
+        title: "Karere";
+        subtitle: "Chat with Contact Name";
       };
 
       [end]

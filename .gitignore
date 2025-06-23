@@ -16,8 +16,10 @@ baileys_auth_info/
 *.db
 *.db-shm
 *.db-wal
-data/
+# Exclude data directories but keep UI source files
 backend/data/
+# Allow frontend UI source files
+!frontend/data/ui/
 
 # Log files
 logs/
