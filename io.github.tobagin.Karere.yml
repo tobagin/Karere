@@ -1,0 +1,145 @@
+app-id: io.github.tobagin.Karere
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+command: karere
+
+# Add Chromium extension for whatsapp-web.js backend
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    version: '23.08'
+    add-ld-path: .
+  org.chromium.Chromium:
+    directory: chromium
+    version: stable
+
+finish-args:
+  # Network access for WhatsApp Web
+  - --share=network
+  # Access to display for GUI
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  # Audio/video for WhatsApp calls (future feature)
+  - --socket=pulseaudio
+  # File access for downloads and media
+  - --filesystem=xdg-download
+  - --filesystem=xdg-pictures
+  - --filesystem=xdg-documents
+  # Device access for notifications
+  - --talk-name=org.freedesktop.Notifications
+  # Session bus access
+  - --socket=session-bus
+  # Allow spawning subprocesses (for backend)
+  - --allow=devel
+  # Chromium needs these permissions
+  - --device=dri
+  - --filesystem=xdg-run/pipewire-0:ro
+
+modules:
+  # Node.js runtime for the backend
+  - name: nodejs
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/bin /app/lib /app/include /app/share
+      - cp -r bin/* /app/bin/
+      - cp -r lib/* /app/lib/
+      - cp -r include/* /app/include/
+      - cp -r share/* /app/share/
+    sources:
+      - type: archive
+        url: https://nodejs.org/dist/v22.16.0/node-v22.16.0-linux-arm64.tar.xz
+        sha256: eab80cb88f8fda1e65f5e8d0420c9809bdb320b03fd34976ab7161b6e703b910
+        strip-components: 1
+        only-arches:
+          - aarch64
+      - type: archive
+        url: https://nodejs.org/dist/v22.16.0/node-v22.16.0-linux-x64.tar.xz
+        sha256: f4cb75bb036f0d0eddf6b79d9596df1aaab9ddccd6a20bf489be5abe9467e84e
+        strip-components: 1
+        only-arches:
+          - x86_64
+
+  # Setup Chromium extension directories
+  - name: chromium-setup
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/chromium /app/lib/ffmpeg
+      - mkdir -p /app/bin
+      - |
+        cat > /app/bin/chromium-browser << 'EOF'
+        #!/bin/bash
+        # Use Chromium from extension if available, fallback to system
+        if [ -x "/app/chromium/chrome" ]; then
+          exec /app/chromium/chrome "$@"
+        elif [ -x "/usr/bin/chromium-browser" ]; then
+          exec /usr/bin/chromium-browser "$@"
+        else
+          echo "Chromium not found. Please install org.chromium.Chromium extension."
+          exit 1
+        fi
+        EOF
+      - chmod +x /app/bin/chromium-browser
+      - ln -sf chromium-browser /app/bin/chrome
+
+  # Python dependencies for the frontend
+  - name: python-dependencies
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} pygobject
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/source/P/PyGObject/PyGObject-3.48.2.tar.gz
+        sha256: 0794ba6f7a2b8f1d8b9b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b
+
+  # Main Karere application
+  - name: karere
+    buildsystem: meson
+    config-opts:
+      - -Dflatpak=true
+    build-commands:
+      # Install backend dependencies
+      - cd backend && npm ci --production --no-optional
+      # Build frontend
+      - meson setup builddir --prefix=/app
+      - meson compile -C builddir
+      - meson install -C builddir
+      # Install backend to app directory
+      - mkdir -p /app/share/karere
+      - cp -r backend /app/share/karere/
+      - cp -r frontend /app/share/karere/
+      # Create launcher script that handles Flatpak environment
+      - |
+        cat > /app/bin/karere << 'EOF'
+        #!/bin/bash
+
+        # Set up environment for Flatpak
+        export PATH="/app/bin:$PATH"
+        export NODE_PATH="/app/share/karere/backend/node_modules"
+        export KARERE_BACKEND_PATH="/app/share/karere/backend"
+        export PYTHONPATH="/app/share/karere:$PYTHONPATH"
+
+        # Set up data directory in user space
+        export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+        export KARERE_DATA_DIR="$XDG_DATA_HOME/karere"
+        mkdir -p "$KARERE_DATA_DIR"
+
+        # Change to backend directory for proper relative paths
+        cd /app/share/karere/backend
+
+        # Launch the application
+        exec python3 -m frontend.karere.main "$@"
+        EOF
+      - chmod +x /app/bin/karere
+    sources:
+      - type: dir
+        path: .
+        skip:
+          - .git
+          - builddir*
+          - .flatpak-builder
+          - backend/node_modules
+          - backend/data
+          - "*.db"
+          - "*.log"

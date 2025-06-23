@@ -189,8 +189,11 @@ class KarereApplication(Adw.Application):
                 # Development paths
                 os.path.join(os.path.dirname(__file__), '..', '..', 'backend'),
                 # Flatpak paths
-                '/app/share/karere-backend',
+                '/app/share/karere/backend',
                 # System installation paths
+                '/usr/share/karere/backend',
+                '/usr/local/share/karere/backend',
+                # Legacy paths
                 '/usr/share/karere-backend',
                 '/usr/local/share/karere-backend',
                 # Relative paths
@@ -198,6 +201,16 @@ class KarereApplication(Adw.Application):
                 '../backend',
                 '../../backend'
             ]
+
+            # Check if running in Flatpak environment
+            is_flatpak = os.path.exists('/app') and os.environ.get('FLATPAK_ID') == 'io.github.tobagin.Karere'
+            if is_flatpak:
+                print("Running in Flatpak environment")
+                # Prioritize Flatpak paths
+                backend_paths = [
+                    '/app/share/karere/backend',
+                    os.path.join(os.path.dirname(__file__), '..', '..', 'backend'),
+                ]
 
             backend_dir = None
             backend_file = None
