@@ -35,6 +35,11 @@ class WebSocketClient(GObject.Object):
         'sync-complete': (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         'sync-error': (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         'chats-updated': (GObject.SignalFlags.RUN_FIRST, None, (GObject.TYPE_PYOBJECT,)),
+        # Session disconnection signals
+        'auth-failure': (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        'session-logout': (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        'connection-lost': (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        'connection-status': (GObject.SignalFlags.RUN_FIRST, None, (GObject.TYPE_PYOBJECT,)),
     }
 
     def __init__(self, url="ws://localhost:8765"):
@@ -109,6 +114,15 @@ class WebSocketClient(GObject.Object):
                 GLib.idle_add(self.emit, 'sync-error', msg_data.get('message', 'Sync failed'))
             elif msg_type == 'chats_updated':
                 GLib.idle_add(self.emit, 'chats-updated', msg_data.get('chats', []))
+            # Handle session disconnection events
+            elif msg_type == 'auth_failure':
+                GLib.idle_add(self.emit, 'auth-failure', msg_data.get('message', 'Authentication failed'))
+            elif msg_type == 'session_logout':
+                GLib.idle_add(self.emit, 'session-logout', msg_data.get('message', 'Logged out from phone'))
+            elif msg_type == 'connection_lost':
+                GLib.idle_add(self.emit, 'connection-lost', msg_data.get('message', 'Connection lost'))
+            elif msg_type == 'connection_status':
+                GLib.idle_add(self.emit, 'connection-status', msg_data)
         except Exception as e:
             print(f"Error processing message: {e}")
 

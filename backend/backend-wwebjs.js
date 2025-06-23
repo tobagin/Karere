@@ -18,23 +18,33 @@ const client = new Client({
         dataPath: './data/wwebjs_auth'
     }),
     puppeteer: {
-        headless: false,
+        headless: true, // Use headless mode for better compatibility
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--disable-gpu',
-            '--remote-debugging-port=9222',
             '--disable-web-security',
             '--disable-features=VizDisplayCompositor',
             '--no-first-run',
             '--disable-default-apps',
             '--disable-extensions',
             '--disable-sync',
-            '--disable-translate'
+            '--disable-translate',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-ipc-flooding-protection',
+            '--single-process', // Avoid process singleton issues
+            '--no-zygote',
+            '--disable-crash-reporter',
+            '--disable-logging',
+            '--disable-permissions-api',
+            '--disable-notifications'
         ],
         executablePath: '/usr/bin/chromium-browser',
-        timeout: 60000
+        timeout: 60000,
+        userDataDir: './data/wwebjs_auth/browser_data' // Use separate user data directory
     }
 });
 
@@ -124,14 +134,77 @@ client.on('authenticated', () => {
 
 client.on('auth_failure', (msg) => {
     log.error('Authentication failed', { error: msg });
-    sendToFrontend('status_update', 'auth_failure');
+    isReady = false;
+    qrCode = null;
+    sendToFrontend('auth_failure', {
+        message: 'Authentication failed. Please scan the QR code again.',
+        error: msg
+    });
 });
 
-client.on('disconnected', (reason) => {
+client.on('disconnected', async (reason) => {
     log.info('WhatsApp client disconnected', { reason });
     isReady = false;
-    sendToFrontend('status_update', 'disconnected');
+    qrCode = null;
+
+    // Handle different disconnection reasons
+    if (reason === 'LOGOUT' || reason === 'NAVIGATION') {
+        log.info('User logged out from phone, clearing session data');
+
+        // Clear session data
+        try {
+            await clearSessionData();
+            log.info('Session data cleared successfully');
+        } catch (error) {
+            log.error('Failed to clear session data', error);
+        }
+
+        // Notify frontend that user needs to scan QR again
+        sendToFrontend('session_logout', {
+            message: 'You have been logged out. Please scan the QR code to reconnect.',
+            reason: reason
+        });
+
+        // Restart the client to generate new QR code
+        setTimeout(() => {
+            log.info('Restarting WhatsApp client after logout');
+            client.initialize();
+        }, 2000);
+
+    } else {
+        // Other disconnection reasons - try to reconnect
+        sendToFrontend('connection_lost', {
+            message: 'Connection lost. Attempting to reconnect...',
+            reason: reason
+        });
+
+        // Try to reconnect after a delay
+        setTimeout(() => {
+            log.info('Attempting to reconnect WhatsApp client');
+            client.initialize();
+        }, 5000);
+    }
 });
+
+// Add function to clear session data
+async function clearSessionData() {
+    const fs = require('fs').promises;
+    const path = require('path');
+
+    try {
+        // Clear whatsapp-web.js session data
+        const sessionPath = './data/wwebjs_auth';
+        await fs.rm(sessionPath, { recursive: true, force: true });
+        log.info('WhatsApp Web session data cleared');
+
+        // Clear database data (optional - you might want to keep chat history)
+        // await database.clearAllData();
+
+    } catch (error) {
+        log.error('Error clearing session data', error);
+        throw error;
+    }
+}
 
 client.on('message', async (message) => {
     log.info('New message received', { from: message.from, hasMedia: message.hasMedia });
@@ -480,7 +553,21 @@ async function startBackend() {
         await database.initialize();
 
         log.info('Starting WhatsApp Web client...');
-        client.initialize();
+
+        // Add error handling for client initialization
+        client.on('error', (error) => {
+            log.error('WhatsApp client error', error);
+            sendToFrontend('status_update', 'error');
+        });
+
+        try {
+            await client.initialize();
+            log.info('WhatsApp Web client initialized successfully');
+        } catch (initError) {
+            log.error('Failed to initialize WhatsApp Web client', initError);
+            sendToFrontend('status_update', 'initialization_failed');
+            throw initError;
+        }
 
         log.info('Backend initialization completed');
 

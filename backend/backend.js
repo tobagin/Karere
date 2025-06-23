@@ -642,7 +642,14 @@ async function handleConnectionUpdate(update) {
             sendToFrontend('connection_status', { status: 'closed', reason });
 
             if (statusCode === DisconnectReason.loggedOut) {
-                log.baileys('Logged out, deleting credentials and restarting');
+                log.baileys('User logged out from phone, clearing session data');
+
+                // Notify frontend about logout
+                sendToFrontend('session_logout', {
+                    message: 'You have been logged out from your phone. Please scan the QR code to reconnect.',
+                    reason: 'logged_out'
+                });
+
                 try {
                     await fs.rm('baileys_auth_info', { recursive: true, force: true });
                     log.baileys('Authentication credentials deleted');
@@ -655,10 +662,22 @@ async function handleConnectionUpdate(update) {
             } else if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
                 reconnectAttempts++;
                 log.baileys(`Scheduling reconnection attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
+
+                // Notify frontend about connection loss and reconnection attempt
+                sendToFrontend('connection_lost', {
+                    message: `Connection lost. Attempting to reconnect... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`,
+                    reason: statusCode,
+                    attempt: reconnectAttempts,
+                    maxAttempts: MAX_RECONNECT_ATTEMPTS
+                });
+
                 setTimeout(() => connectToWhatsApp(), RECONNECT_DELAY);
             } else {
                 log.error('Max reconnection attempts reached');
-                sendToFrontend('connection_failed', { reason: 'Max reconnection attempts reached' });
+                sendToFrontend('connection_failed', {
+                    message: 'Failed to reconnect to WhatsApp. Please restart the application.',
+                    reason: 'Max reconnection attempts reached'
+                });
             }
 
         } else if (connection === 'open') {

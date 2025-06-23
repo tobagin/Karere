@@ -338,6 +338,11 @@ class KarereApplication(Adw.Application):
         self.ws_client.connect('sync-complete', self.on_sync_complete)
         self.ws_client.connect('sync-error', self.on_sync_error)
         self.ws_client.connect('chats-updated', self.on_chats_updated)
+        # Connect session disconnection signals
+        self.ws_client.connect('auth-failure', self.on_auth_failure)
+        self.ws_client.connect('session-logout', self.on_session_logout)
+        self.ws_client.connect('connection-lost', self.on_connection_lost)
+        self.ws_client.connect('connection-status', self.on_connection_status)
         self.ws_client.start()
         print("WebSocket client setup and started.")
 
@@ -601,6 +606,50 @@ class KarereApplication(Adw.Application):
                     contact_name = self.format_phone_number(jid)
 
                 self.win.add_or_update_chat(jid, last_message, timestamp, unread_count, contact_name, avatar_base64, message_type, from_me, is_initial=True)
+
+    def on_auth_failure(self, _, message):
+        """Handle authentication failure."""
+        print(f"Authentication failed: {message}")
+        if self.win:
+            self.win.show_toast(f"Authentication failed: {message}")
+            # Show QR view again for re-authentication
+            self.win.show_qr_view()
+
+    def on_session_logout(self, _, message):
+        """Handle session logout (user disconnected from phone)."""
+        print(f"Session logged out: {message}")
+        if self.win:
+            self.win.show_toast(f"Logged out: {message}")
+            # Clear chat data and show QR view
+            if hasattr(self.win, 'clear_chat_data'):
+                self.win.clear_chat_data()
+            self.win.show_qr_view()
+            # Show a more prominent notification
+            if hasattr(self.win, 'show_logout_notification'):
+                self.win.show_logout_notification(message)
+
+    def on_connection_lost(self, _, message):
+        """Handle connection lost (temporary disconnection)."""
+        print(f"Connection lost: {message}")
+        if self.win:
+            self.win.show_toast(f"Connection lost: {message}")
+            # Show reconnecting view
+            self.win.show_reconnecting_view()
+
+    def on_connection_status(self, _, status_data):
+        """Handle connection status updates."""
+        status = status_data.get('status', 'unknown')
+        reason = status_data.get('reason', '')
+        print(f"Connection status: {status}, reason: {reason}")
+
+        if self.win:
+            if status == 'closed':
+                self.win.show_toast(f"Connection closed: {reason}")
+                self.win.show_reconnecting_view()
+            elif status == 'open':
+                self.win.show_toast("Connected to WhatsApp")
+            elif status == 'connecting':
+                self.win.show_toast("Connecting to WhatsApp...")
 
     def _switch_to_chat_view_after_download(self):
         """Switch to chat view after download completion."""
