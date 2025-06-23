@@ -8,6 +8,7 @@ import signal
 import atexit
 import time
 import threading
+import argparse
 from pathlib import Path
 
 gi.require_version('Gtk', '4.0')
@@ -59,7 +60,7 @@ _load_resources_early()
 class KarereApplication(Adw.Application):
     """The main Karere Application class."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, backend_type='auto', **kwargs):
         super().__init__(application_id='io.github.tobagin.Karere', **kwargs)
         self.win = None
         self.ws_client = None
@@ -68,6 +69,7 @@ class KarereApplication(Adw.Application):
         self.connected = False  # Track backend connection state
         self.was_previously_connected = False  # Track if we were connected before
         self.syncing = False  # Track sync state
+        self.backend_type = backend_type  # 'auto', 'wwebjs', 'baileys'
 
         # Register cleanup handlers
         atexit.register(self.cleanup_backend)
@@ -200,22 +202,48 @@ class KarereApplication(Adw.Application):
             backend_dir = None
             backend_file = None
 
-            # Check for new whatsapp-web.js backend first, then fallback to old backend
-            for path in backend_paths:
-                if os.path.exists(os.path.join(path, 'backend-wwebjs.js')):
-                    backend_dir = path
-                    backend_file = 'backend-wwebjs.js'
-                    break
-                elif os.path.exists(os.path.join(path, 'backend.js')):
-                    backend_dir = path
-                    backend_file = 'backend.js'
-                    break
+            # Choose backend based on backend_type parameter
+            if self.backend_type == 'wwebjs':
+                # Force whatsapp-web.js backend
+                for path in backend_paths:
+                    if os.path.exists(os.path.join(path, 'backend-wwebjs.js')):
+                        backend_dir = path
+                        backend_file = 'backend-wwebjs.js'
+                        break
+                if not backend_dir:
+                    print("ERROR: whatsapp-web.js backend (backend-wwebjs.js) not found!")
+                    return False
+
+            elif self.backend_type == 'baileys':
+                # Force Baileys backend
+                for path in backend_paths:
+                    if os.path.exists(os.path.join(path, 'backend.js')):
+                        backend_dir = path
+                        backend_file = 'backend.js'
+                        break
+                if not backend_dir:
+                    print("ERROR: Baileys backend (backend.js) not found!")
+                    return False
+
+            else:
+                # Auto-detect: prefer whatsapp-web.js, fallback to Baileys
+                for path in backend_paths:
+                    if os.path.exists(os.path.join(path, 'backend-wwebjs.js')):
+                        backend_dir = path
+                        backend_file = 'backend-wwebjs.js'
+                        break
+                    elif os.path.exists(os.path.join(path, 'backend.js')):
+                        backend_dir = path
+                        backend_file = 'backend.js'
+                        break
 
             if not backend_dir:
                 print(f"ERROR: Backend not found in any of these locations: {backend_paths}")
                 return False
 
-            print(f"Starting backend from: {backend_dir} (using {backend_file})")
+            backend_name = "whatsapp-web.js" if backend_file == 'backend-wwebjs.js' else "Baileys"
+            print(f"Starting {backend_name} backend from: {backend_dir} (using {backend_file})")
+            print(f"Backend selection mode: {self.backend_type}")
 
             # Set up environment for whatsapp-web.js backend
             env = os.environ.copy()
@@ -655,8 +683,53 @@ class KarereApplication(Adw.Application):
         sys.exit(0)
 
 def main():
-    app = KarereApplication()
-    return app.run(sys.argv)
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description='Karere - WhatsApp Desktop Client',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Backend Selection:
+  --wwebjs      Use whatsapp-web.js backend (recommended for better message history)
+  --baileys     Use Baileys backend (lightweight, may have limited message history)
+
+If no backend is specified, the application will auto-detect and prefer whatsapp-web.js.
+
+Examples:
+  python -m frontend.karere.main --wwebjs     # Force whatsapp-web.js backend
+  python -m frontend.karere.main --baileys    # Force Baileys backend
+  python -m frontend.karere.main              # Auto-detect (prefer whatsapp-web.js)
+        """
+    )
+
+    backend_group = parser.add_mutually_exclusive_group()
+    backend_group.add_argument(
+        '--wwebjs',
+        action='store_true',
+        help='Use whatsapp-web.js backend (better message history, requires Chromium)'
+    )
+    backend_group.add_argument(
+        '--baileys',
+        action='store_true',
+        help='Use Baileys backend (lightweight, limited message history)'
+    )
+
+    args = parser.parse_args()
+
+    # Determine backend type
+    if args.wwebjs:
+        backend_type = 'wwebjs'
+        print("🌐 Using whatsapp-web.js backend (forced by --wwebjs flag)")
+    elif args.baileys:
+        backend_type = 'baileys'
+        print("⚡ Using Baileys backend (forced by --baileys flag)")
+    else:
+        backend_type = 'auto'
+        print("🔍 Auto-detecting backend (prefer whatsapp-web.js)")
+
+    # Create and run application
+    # Only pass the application name to GTK, not our custom arguments
+    app = KarereApplication(backend_type=backend_type)
+    return app.run([sys.argv[0]])
 
 if __name__ == '__main__':
     sys.exit(main())
