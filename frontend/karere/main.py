@@ -198,23 +198,45 @@ class KarereApplication(Adw.Application):
             ]
 
             backend_dir = None
+            backend_file = None
+
+            # Check for new whatsapp-web.js backend first, then fallback to old backend
             for path in backend_paths:
-                if os.path.exists(os.path.join(path, 'backend.js')):
+                if os.path.exists(os.path.join(path, 'backend-wwebjs.js')):
                     backend_dir = path
+                    backend_file = 'backend-wwebjs.js'
+                    break
+                elif os.path.exists(os.path.join(path, 'backend.js')):
+                    backend_dir = path
+                    backend_file = 'backend.js'
                     break
 
             if not backend_dir:
                 print(f"ERROR: Backend not found in any of these locations: {backend_paths}")
                 return False
 
-            print(f"Starting backend from: {backend_dir}")
+            print(f"Starting backend from: {backend_dir} (using {backend_file})")
+
+            # Set up environment for whatsapp-web.js backend
+            env = os.environ.copy()
+            if backend_file == 'backend-wwebjs.js':
+                env['DISPLAY'] = ':99'  # Use virtual display
+                # Start Xvfb if not already running
+                try:
+                    subprocess.run(['pgrep', 'Xvfb'], check=True, capture_output=True)
+                except subprocess.CalledProcessError:
+                    print("Starting virtual display...")
+                    subprocess.Popen(['Xvfb', ':99', '-screen', '0', '1024x768x24'],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    time.sleep(2)  # Give Xvfb time to start
 
             # Start the backend process
             self.backend_process = subprocess.Popen(
-                ['node', 'backend.js'],
+                ['node', backend_file],
                 cwd=backend_dir,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                env=env,
                 preexec_fn=os.setsid  # Create new process group
             )
 
@@ -346,12 +368,16 @@ class KarereApplication(Adw.Application):
     def on_baileys_ready(self, _):
         """
         Handler for when the backend is fully connected to WhatsApp.
-        The backend will handle whether to start sync or go directly to chats.
+        Request initial chats from the backend.
         """
         print("Backend is ready and connected to WhatsApp.")
-        # Don't immediately switch to chat view - let the backend determine
-        # if sync is needed or if we can go directly to chats
-        # The backend will send either sync-started or initial_chats signals
+
+        # Request initial chats from the backend
+        if self.ws_client:
+            print("Requesting initial chats from backend...")
+            self.ws_client.send_command('get_initial_chats')
+        else:
+            print("ERROR: WebSocket client not available to request chats")
 
     def on_initial_chats(self, _, chats):
         """Handler for receiving the initial list of chats."""
@@ -361,7 +387,11 @@ class KarereApplication(Adw.Application):
         if self.win:
             self.win.show_chat_view()
 
-        for chat in chats:
+        # Sort chats by timestamp (latest first) to ensure proper ordering
+        sorted_chats = sorted(chats, key=lambda x: x.get('timestamp', 0), reverse=True)
+        print(f"Sorted {len(sorted_chats)} chats by timestamp")
+
+        for chat in sorted_chats:
             # Use contact name if available and different from JID, otherwise use formatted phone number
             name = chat.get('name')
             jid = chat['jid']
@@ -371,10 +401,17 @@ class KarereApplication(Adw.Application):
                 # Format the phone number from JID for display
                 contact_name = self.format_phone_number(jid)
 
-            avatar_base64 = chat.get('avatarBase64')
+            # Check both avatar fields - prefer chatAvatarBase64 for groups, avatarBase64 for contacts
+            avatar_base64 = chat.get('chatAvatarBase64') or chat.get('avatarBase64')
             # Don't pass 'None' string, pass actual None
-            if avatar_base64 == 'None':
+            if avatar_base64 == 'None' or avatar_base64 == '':
                 avatar_base64 = None
+
+            # Debug avatar data
+            if avatar_base64:
+                print(f"Chat {jid} has avatar data: {len(avatar_base64)} characters")
+            else:
+                print(f"Chat {jid} has no avatar data. chatAvatarBase64: {chat.get('chatAvatarBase64')}, avatarBase64: {chat.get('avatarBase64')}")
 
             # Get message type and sender information
             message_type = chat.get('lastMessageType', 'text')
@@ -389,7 +426,8 @@ class KarereApplication(Adw.Application):
                 contact_name,
                 avatar_base64,
                 message_type,
-                from_me
+                from_me,
+                is_initial=True
             )
 
     def on_new_message(self, _, from_jid, body, timestamp=None, contact_name=None, avatar_base64=None, message_type='text'):
@@ -506,8 +544,12 @@ class KarereApplication(Adw.Application):
     def on_chats_updated(self, _, chats):
         """Handle updated chat list from backend."""
         print(f"Chats updated: {len(chats)} chats")
+        # Sort chats by timestamp (latest first) to ensure proper ordering
+        sorted_chats = sorted(chats, key=lambda x: x.get('timestamp', 0), reverse=True)
+        print(f"Sorted {len(sorted_chats)} chats by timestamp")
+
         # Process updated chats similar to initial chats
-        for chat in chats:
+        for chat in sorted_chats:
             jid = chat.get('jid')
             name = chat.get('name')
             last_message = chat.get('lastMessage', 'No messages yet')
@@ -530,7 +572,7 @@ class KarereApplication(Adw.Application):
                 else:
                     contact_name = self.format_phone_number(jid)
 
-                self.win.add_or_update_chat(jid, last_message, timestamp, unread_count, contact_name, avatar_base64, message_type, from_me)
+                self.win.add_or_update_chat(jid, last_message, timestamp, unread_count, contact_name, avatar_base64, message_type, from_me, is_initial=True)
 
     def _switch_to_chat_view_after_download(self):
         """Switch to chat view after download completion."""

@@ -50,7 +50,7 @@ class ChatListPage(Adw.NavigationPage):
         """Set reference to parent window."""
         self.window = window
     
-    def add_or_update_chat(self, jid, last_message, timestamp=None, unread_count=0, contact_name=None, avatar_base64=None, message_type='text', from_me=False):
+    def add_or_update_chat(self, jid, last_message, timestamp=None, unread_count=0, contact_name=None, avatar_base64=None, message_type='text', from_me=False, is_initial=False):
         """Add or update a chat in the list."""
         from chat_row import ChatRow
 
@@ -66,9 +66,11 @@ class ChatListPage(Adw.NavigationPage):
             if avatar_base64:
                 chat_row.set_avatar_base64(avatar_base64)
 
-            # Move chat to top of list (remove and prepend)
-            self.chats_listbox.remove(chat_row)
-            self.chats_listbox.prepend(chat_row)
+            # Only move to top if this is a new message (not initial load)
+            if not is_initial:
+                # Move chat to top of list (remove and prepend)
+                self.chats_listbox.remove(chat_row)
+                self.chats_listbox.prepend(chat_row)
         else:
             # Create new chat row
             new_row = ChatRow(jid, last_message, timestamp, unread_count)
@@ -81,7 +83,12 @@ class ChatListPage(Adw.NavigationPage):
             if avatar_base64:
                 new_row.set_avatar_base64(avatar_base64)
             self._chat_rows[jid] = new_row
-            self.chats_listbox.prepend(new_row)
+
+            # For initial chats, append in order; for new messages, prepend to top
+            if is_initial:
+                self.chats_listbox.append(new_row)
+            else:
+                self.chats_listbox.prepend(new_row)
             new_row.set_visible(True)
     
     def remove_chat(self, jid):

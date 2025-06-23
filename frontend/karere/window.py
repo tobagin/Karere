@@ -334,9 +334,9 @@ class KarereWindow(Adw.ApplicationWindow):
                 return f"+{phone_number}"
         return jid
 
-    def add_or_update_chat(self, jid, last_message, timestamp=None, unread_count=0, contact_name=None, avatar_base64=None, message_type='text', from_me=False):
+    def add_or_update_chat(self, jid, last_message, timestamp=None, unread_count=0, contact_name=None, avatar_base64=None, message_type='text', from_me=False, is_initial=False):
         # Use ChatListPage to add or update chat
-        self.chat_list_page.add_or_update_chat(jid, last_message, timestamp, unread_count, contact_name, avatar_base64, message_type, from_me)
+        self.chat_list_page.add_or_update_chat(jid, last_message, timestamp, unread_count, contact_name, avatar_base64, message_type, from_me, is_initial)
 
         # Create navigation page for this chat if it doesn't exist
         if jid not in self._chat_pages:

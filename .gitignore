@@ -6,16 +6,18 @@ build/
 
 # Node.js
 node_modules/
-package-lock.json
 
 # Authentication data
 baileys_auth_info/
+.wwebjs_auth/
+.wwebjs_cache/
 
 # Database files
 *.db
 *.db-shm
 *.db-wal
-data/karere.db
+data/
+backend/data/
 
 # Log files
 logs/

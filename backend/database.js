@@ -252,7 +252,7 @@ class Database {
                 LEFT JOIN messages m ON c.last_message_id = m.id
                 LEFT JOIN contacts cont ON c.jid = cont.jid
                 WHERE c.is_archived = FALSE
-                ORDER BY c.updated_at DESC
+                ORDER BY c.last_message_timestamp DESC
                 LIMIT ?
             `;
 

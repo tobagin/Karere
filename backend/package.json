@@ -3,7 +3,6 @@
   "version": "0.6.3",
   "description": "Baileys backend for the Karere WhatsApp client.",
   "main": "backend.js",
-
   "type": "module",
   "scripts": {
     "start": "node backend.js",
@@ -24,19 +23,24 @@
   "license": "ISC",
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.18",
+    "node-cron": "^3.0.3",
     "qrcode": "^1.5.4",
-    "ws": "^8.18.2",
-    "winston": "^3.11.0",
     "sqlite3": "^5.1.6",
-    "node-cron": "^3.0.3"
+    "whatsapp-web.js": "^1.30.0",
+    "winston": "^3.11.0",
+    "ws": "^8.18.2"
   },
   "devDependencies": {
-    "jest": "^29.7.0",
-    "eslint": "^8.57.0",
-    "supertest": "^6.3.4",
-    "ws": "^8.18.2",
     "@jest/globals": "^29.7.0",
-    "jest-environment-node": "^29.7.0"
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "jest-environment-node": "^29.7.0",
+    "supertest": "^6.3.4",
+    "ws": "^8.18.2"
+  },
+  "overrides": {
+    "tar-fs": "^3.0.4",
+    "ws": "^8.18.2"
   },
   "jest": {
     "testEnvironment": "node",
@@ -46,10 +50,16 @@
       "!node_modules/**"
     ],
     "coverageDirectory": "coverage",
-    "coverageReporters": ["text", "lcov", "html"],
+    "coverageReporters": [
+      "text",
+      "lcov",
+      "html"
+    ],
     "testMatch": [
       "**/tests/**/*.test.js"
     ],
-    "setupFilesAfterEnv": ["<rootDir>/tests/setup.js"]
+    "setupFilesAfterEnv": [
+      "<rootDir>/tests/setup.js"
+    ]
   }
 }

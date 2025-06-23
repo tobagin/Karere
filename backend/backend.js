@@ -16,7 +16,8 @@ const makeWASocket = baileys.default;
 const {
     DisconnectReason,
     useMultiFileAuthState,
-    fetchLatestBaileysVersion
+    fetchLatestBaileysVersion,
+    Browsers
 } = baileys;
 
 // Configuration
@@ -553,10 +554,26 @@ async function connectToWhatsApp() {
             version,
             auth: state,
             printQRInTerminal: false,
-            browser: ['Karere', 'Desktop', '1.0.0'],
+            browser: Browsers.macOS('Desktop'),
             connectTimeoutMs: 60000,
             defaultQueryTimeoutMs: 60000,
-            keepAliveIntervalMs: 10000
+            keepAliveIntervalMs: 10000,
+            syncFullHistory: true,
+            markOnlineOnConnect: false,
+            getMessage: async (key) => {
+                // Implement getMessage for message resending and poll decryption
+                try {
+                    const message = await database.getMessage(key.id);
+                    return message ? {
+                        key: key,
+                        message: JSON.parse(message.content || '{}'),
+                        messageTimestamp: message.timestamp
+                    } : undefined;
+                } catch (error) {
+                    log.debug('Failed to get message for key', { keyId: key.id, error: error.message });
+                    return undefined;
+                }
+            }
         });
 
         sock.ev.on('connection.update', handleConnectionUpdate);
@@ -565,6 +582,17 @@ async function connectToWhatsApp() {
         sock.ev.on('presence.update', handlePresenceUpdate);
         sock.ev.on('chats.set', handleHistorySet);
         sock.ev.on('messaging-history.set', handleHistorySet);
+
+        // Debug all events to see what's happening
+        sock.ev.on('*', (event, data) => {
+            if (event.includes('history') || event.includes('message') || event.includes('chat')) {
+                log.debug(`Baileys event: ${event}`, {
+                    component: 'baileys',
+                    dataKeys: data ? Object.keys(data) : [],
+                    dataSize: data ? JSON.stringify(data).length : 0
+                });
+            }
+        });
 
         timer.end();
         log.baileys('WhatsApp socket initialized successfully');
@@ -672,7 +700,12 @@ async function handleHistorySet(item) {
 
     try {
         const eventType = item.isLatest ? 'messaging-history.set' : 'chats.set';
-        log.baileys(`Received history via "${eventType}"`, { chatCount: item.chats.length });
+        log.baileys(`Received history via "${eventType}"`, {
+            chatCount: item.chats?.length || 0,
+            messageCount: item.messages?.length || 0,
+            isLatest: item.isLatest,
+            hasMessages: !!item.messages
+        });
 
         const chats = [];
 
@@ -716,9 +749,14 @@ async function handleHistorySet(item) {
 
             // Save messages from this chat
             if (chat.messages && chat.messages.length > 0) {
-                for (const msg of chat.messages.slice(0, 10)) { // Save up to 10 recent messages
+                log.info(`Saving ${chat.messages.length} messages for chat ${chat.id}`);
+                let savedMessageCount = 0;
+
+                for (const msg of chat.messages) { // Save ALL messages from history
                     try {
                         const messageContent = getDisplayMessage(msg);
+                        const messageType = getMessageType(msg);
+
                         if (messageContent && msg.key?.id) {
                             await database.saveMessage(
                                 msg.key.id,
@@ -726,10 +764,11 @@ async function handleHistorySet(item) {
                                 msg.key.fromMe || false,
                                 messageContent,
                                 msg.messageTimestamp * 1000,
-                                'text',
-                                'received',
+                                messageType,
+                                msg.key.fromMe ? 'sent' : 'received',
                                 msg.pushName || chat.name
                             );
+                            savedMessageCount++;
                             log.debug(`Saved message: ${msg.key.id} in chat ${chat.id}`);
                         }
                     } catch (msgError) {
@@ -739,6 +778,10 @@ async function handleHistorySet(item) {
                             error: msgError.message
                         });
                     }
+                }
+
+                if (savedMessageCount > 0) {
+                    log.info(`Successfully saved ${savedMessageCount} messages for chat ${chat.id}`);
                 }
             }
         }
@@ -886,6 +929,9 @@ async function syncContactsInBackground() {
 
         log.info('Starting background contact synchronization');
 
+        // Sync existing contact avatars to chats table first
+        await syncContactAvatarsToChats();
+
         // Get all chats that need contact info
         const chats = await database.getChats(100);
         let syncedCount = 0;
@@ -938,16 +984,26 @@ async function syncExistingChats() {
 
         // Get all chats from database
         const chats = await database.getChats(100);
+        const chatsNeedingMessages = [];
         let syncedCount = 0;
 
         for (const chat of chats) {
             try {
                 const jid = chat.jid;
-                // Basic sync - just ensure chat data is up to date
-                // Avatar sync removed - using base64 only now
+
+                // Check if this chat has any messages
+                const existingMessages = await database.getMessages(jid, 1);
+                if (existingMessages.length === 0) {
+                    // Add to list of chats that need message loading
+                    chatsNeedingMessages.push({
+                        jid,
+                        lastMessageTime: chat.conversationTimestamp || 0,
+                        name: chat.name || jid
+                    });
+                }
 
                 // Small delay to avoid overwhelming WhatsApp
-                await new Promise(resolve => setTimeout(resolve, 50));
+                await new Promise(resolve => setTimeout(resolve, 200));
 
             } catch (chatError) {
                 log.debug('Failed to sync existing chat', {
@@ -957,8 +1013,42 @@ async function syncExistingChats() {
             }
         }
 
-        timer.end({ syncedCount });
-        log.info('Existing chat sync completed', { syncedCount });
+        // Now try to load messages for chats that don't have any
+        if (chatsNeedingMessages.length > 0) {
+            log.info(`Found ${chatsNeedingMessages.length} chats without messages, attempting to load them`);
+
+            // Sort by last message time (most recent first)
+            chatsNeedingMessages.sort((a, b) => b.lastMessageTime - a.lastMessageTime);
+
+            // Process up to 10 most recent chats to avoid overwhelming the system
+            const chatsToProcess = chatsNeedingMessages.slice(0, 10);
+
+            for (const chat of chatsToProcess) {
+                try {
+                    log.info(`Attempting to load messages for ${chat.name} (${chat.jid})`);
+                    const messageCount = await loadMessagesForChat(chat.jid, 50);
+                    if (messageCount > 0) {
+                        syncedCount++;
+                        log.info(`Successfully loaded ${messageCount} messages for ${chat.name}`);
+                    } else {
+                        log.debug(`No messages found for ${chat.name}`);
+                    }
+
+                    // Small delay between requests
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+
+                } catch (loadError) {
+                    log.debug(`Failed to load messages for ${chat.name}`, loadError);
+                }
+            }
+
+            if (chatsNeedingMessages.length > 10) {
+                log.info(`Processed 10 of ${chatsNeedingMessages.length} chats. Remaining chats will be processed later.`);
+            }
+        }
+
+        timer.end({ syncedCount, chatsNeedingMessages: chatsNeedingMessages.length });
+        log.info('Existing chat sync completed', { syncedCount, chatsNeedingMessages: chatsNeedingMessages.length });
 
     } catch (error) {
         timer.end({ error: true });
@@ -1109,9 +1199,12 @@ async function performComprehensiveDataDownload() {
                 const jid = chat.jid;
                 log.debug(`Processing chat: ${jid}`);
 
-                // Download comprehensive message history for this chat (more messages)
-                const messageCount = await downloadMessageHistory(jid, 500); // Download up to 500 messages per chat
-                downloadedMessages += messageCount;
+                // Message history is automatically synced via messaging-history.set event
+                // Check if we have messages for this chat
+                const existingMessages = await database.getMessages(jid, 1);
+                if (existingMessages.length > 0) {
+                    downloadedMessages += existingMessages.length;
+                }
 
                 // Download contact info and avatar
                 const contactUpdated = await downloadContactInfo(jid);
@@ -1269,97 +1362,106 @@ async function waitForInitialHistory() {
     });
 }
 
-// Download message history for a specific chat
-async function downloadMessageHistory(jid, limit = 200) {
-    const timer = performance.start('download_message_history');
+// Manual message loading for chats that don't have messages
+async function loadMessagesForChat(jid, limit = 50) {
+    const timer = performance.start('load_messages_for_chat');
 
     try {
         if (!sock || baileysConnectionStatus !== 'open') {
             return 0;
         }
 
-        log.debug(`Downloading comprehensive message history for ${jid}`);
+        log.debug(`Loading messages for chat ${jid}`);
 
-        // For comprehensive download, we want to get more messages
-        // We'll download in batches to avoid overwhelming the system
-        let totalSavedCount = 0;
-        let batchSize = 50;
-        let remainingLimit = limit;
+        // Try multiple methods to get message history
+        let messages = [];
 
-        while (remainingLimit > 0 && batchSize > 0) {
-            const currentBatchSize = Math.min(batchSize, remainingLimit);
+        // Method 1: Try fetchMessageHistory
+        try {
+            const history = await sock.fetchMessageHistory(jid, limit);
+            if (history && history.messages) {
+                messages = history.messages;
+                log.debug(`fetchMessageHistory returned ${messages.length} messages for ${jid}`);
+            }
+        } catch (fetchError) {
+            log.debug(`fetchMessageHistory failed for ${jid}: ${fetchError.message}`);
+        }
 
+        // Method 2: If no messages, try loadMessages
+        if (messages.length === 0) {
             try {
-                // Fetch message history from WhatsApp
-                const messages = await sock.fetchMessageHistory(jid, currentBatchSize);
-
-                if (!messages || messages.length === 0) {
-                    log.debug(`No more messages available for ${jid}`);
-                    break;
+                const loadedMessages = await sock.loadMessages(jid, limit);
+                if (loadedMessages && loadedMessages.length > 0) {
+                    messages = loadedMessages;
+                    log.debug(`loadMessages returned ${messages.length} messages for ${jid}`);
                 }
-
-                let batchSavedCount = 0;
-
-                for (const msg of messages) {
-                    try {
-                        // Check if message already exists to avoid duplicates
-                        const existingMessage = await database.getMessage(msg.key.id);
-                        if (existingMessage) {
-                            continue;
-                        }
-
-                        const messageContent = getDisplayMessage(msg);
-                        const messageType = getMessageType(msg);
-
-                        if (messageContent || messageType !== 'text') {
-                            await database.saveMessage(
-                                msg.key.id,
-                                jid,
-                                msg.key.fromMe,
-                                messageContent || '',
-                                msg.messageTimestamp * 1000,
-                                messageType,
-                                'received',
-                                msg.pushName || null
-                            );
-                            batchSavedCount++;
-
-                            // Download media if present
-                            if (messageType !== 'text' && msg.message) {
-                                await downloadMessageMedia(msg, jid);
-                            }
-                        }
-                    } catch (msgError) {
-                        log.debug('Failed to save message', { jid, messageId: msg.key.id, error: msgError.message });
-                    }
-                }
-
-                totalSavedCount += batchSavedCount;
-                remainingLimit -= currentBatchSize;
-
-                log.debug(`Downloaded batch of ${batchSavedCount} messages for ${jid} (total: ${totalSavedCount})`);
-
-                // If we got fewer messages than requested, we've reached the end
-                if (messages.length < currentBatchSize) {
-                    break;
-                }
-
-                // Small delay between batches to avoid rate limiting
-                await new Promise(resolve => setTimeout(resolve, 200));
-
-            } catch (batchError) {
-                log.debug(`Failed to download message batch for ${jid}`, batchError);
-                break;
+            } catch (loadError) {
+                log.debug(`loadMessages failed for ${jid}: ${loadError.message}`);
             }
         }
 
-        timer.end({ jid, totalSavedCount });
-        log.debug(`Downloaded ${totalSavedCount} total messages for ${jid}`);
-        return totalSavedCount;
+        // Method 3: If still no messages, try getting chat and then messages
+        if (messages.length === 0) {
+            try {
+                const chat = await sock.chatRead(jid);
+                if (chat && chat.messages) {
+                    messages = Object.values(chat.messages);
+                    log.debug(`chatRead returned ${messages.length} messages for ${jid}`);
+                }
+            } catch (chatError) {
+                log.debug(`chatRead failed for ${jid}: ${chatError.message}`);
+            }
+        }
+
+        if (messages.length === 0) {
+            log.debug(`No messages found for ${jid} using any method`);
+            return 0;
+        }
+
+        let savedCount = 0;
+
+        for (const msg of messages) {
+            try {
+                // Skip if no message key
+                if (!msg.key || !msg.key.id) {
+                    continue;
+                }
+
+                // Check if message already exists to avoid duplicates
+                const existingMessage = await database.getMessage(msg.key.id);
+                if (existingMessage) {
+                    continue;
+                }
+
+                const messageContent = getDisplayMessage(msg);
+                const messageType = getMessageType(msg);
+                const timestamp = msg.messageTimestamp ? msg.messageTimestamp * 1000 : Date.now();
+
+                if (messageContent || messageType !== 'text') {
+                    await database.saveMessage(
+                        msg.key.id,
+                        msg.key.remoteJid || jid,
+                        msg.key.fromMe || false,
+                        messageContent || '',
+                        timestamp,
+                        messageType,
+                        msg.key.fromMe ? 'sent' : 'received',
+                        msg.pushName || null
+                    );
+                    savedCount++;
+                }
+            } catch (msgError) {
+                log.debug('Failed to save message', { jid, messageId: msg.key?.id, error: msgError.message });
+            }
+        }
+
+        timer.end({ jid, savedCount, totalFound: messages.length });
+        log.info(`Loaded ${savedCount} messages for ${jid} (found ${messages.length} total)`);
+        return savedCount;
 
     } catch (error) {
         timer.end({ error: true });
-        log.debug(`Failed to download message history for ${jid}`, error);
+        log.debug(`Failed to load messages for ${jid}`, error);
         return 0;
     }
 }
@@ -1510,15 +1612,24 @@ async function downloadContactInfo(jid) {
                         const buffer = await response.arrayBuffer();
                         const base64Avatar = Buffer.from(buffer).toString('base64');
 
-                        // Save the avatar as base64
-                        await database.updateContactAvatar(jid, base64Avatar);
-                        avatarDownloaded = true;
-                        log.debug(`Downloaded avatar for ${jid}: ${base64Avatar.length} chars`);
+                        // Only save if we actually got valid avatar data
+                        if (base64Avatar && base64Avatar.length > 100) { // Basic validation
+                            // Ensure contact exists first, then update avatar
+                            await database.saveContact(jid, existingContact?.name || null, null, base64Avatar);
+
+                            // Also update the corresponding chat avatar so frontend can display it
+                            await database.updateChatAvatar(jid, base64Avatar);
+
+                            avatarDownloaded = true;
+                            log.debug(`Downloaded avatar for ${jid}: ${base64Avatar.length} chars`);
+                        }
                     }
                 }
             } catch (avatarError) {
                 log.debug(`Failed to download avatar for ${jid}`, avatarError);
             }
+        } else {
+            log.debug(`Skipping avatar download for ${jid} - already exists`);
         }
 
         timer.end({ jid, nameUpdated, avatarDownloaded });
@@ -1543,6 +1654,7 @@ async function downloadChatAvatar(jid) {
         // Check if we already have a chat avatar
         const existingChat = await database.getChatWithContact(jid);
         if (existingChat?.avatar_base64) {
+            log.debug(`Skipping chat avatar download for ${jid} - already exists`);
             return false; // Already have avatar
         }
 
@@ -1557,11 +1669,14 @@ async function downloadChatAvatar(jid) {
                     const buffer = await response.arrayBuffer();
                     const base64Avatar = Buffer.from(buffer).toString('base64');
 
-                    // Save the chat avatar as base64
-                    await database.updateChatAvatar(jid, base64Avatar);
-                    log.debug(`Downloaded chat avatar for ${jid}: ${base64Avatar.length} chars`);
-                    timer.end({ jid, downloaded: true });
-                    return true;
+                    // Only save if we actually got valid avatar data
+                    if (base64Avatar && base64Avatar.length > 100) { // Basic validation
+                        // Ensure chat exists first, then update avatar
+                        await database.saveChat(jid, existingChat?.name || null, null, null, base64Avatar);
+                        log.debug(`Downloaded chat avatar for ${jid}: ${base64Avatar.length} chars`);
+                        timer.end({ jid, downloaded: true });
+                        return true;
+                    }
                 }
             }
         } catch (avatarError) {
@@ -1751,49 +1866,20 @@ async function syncChatMessages(jid, lastSyncTime) {
         const lastMessageTime = recentMessages.length > 0 ? recentMessages[0].timestamp : lastSyncTime;
 
         // Only fetch if we haven't checked recently (avoid too frequent checks)
+        // BUT if we have no messages at all, always try to download
         const timeSinceLastCheck = Date.now() - lastMessageTime;
-        if (timeSinceLastCheck < 60000) { // Less than 1 minute
+        if (timeSinceLastCheck < 300000 && recentMessages.length > 0) { // Less than 5 minutes AND we have messages
+            log.debug(`Skipping message sync for ${jid} - checked recently`);
             return 0;
         }
 
         log.debug(`Checking for new messages in ${jid} since ${new Date(lastMessageTime).toISOString()}`);
 
-        // Fetch recent message history
-        const messages = await sock.fetchMessageHistory(jid, 20);
-        let newMessageCount = 0;
-
-        for (const msg of messages) {
-            try {
-                const messageTime = msg.messageTimestamp * 1000;
-
-                // Only process messages newer than our last known message
-                if (messageTime <= lastMessageTime) {
-                    continue;
-                }
-
-                const messageContent = getDisplayMessage(msg);
-                if (messageContent) {
-                    // Check if message already exists
-                    const existingMessage = await database.getMessage(msg.key.id);
-                    if (!existingMessage) {
-                        await database.saveMessage(
-                            msg.key.id,
-                            jid,
-                            msg.key.fromMe,
-                            messageContent,
-                            messageTime,
-                            'text',
-                            'received',
-                            msg.pushName || null
-                        );
-                        newMessageCount++;
-                        log.debug(`Synced new message in ${jid}: ${msg.key.id}`);
-                    }
-                }
-            } catch (msgError) {
-                log.debug('Failed to sync message', { jid, messageId: msg.key.id, error: msgError.message });
-            }
-        }
+        // Messages are automatically synced via messaging-history.set events
+        // Just check if we have any new messages since last sync
+        const allMessages = await database.getMessages(jid, 50);
+        const newMessages = allMessages.filter(msg => msg.timestamp > lastMessageTime);
+        let newMessageCount = newMessages.length;
 
         timer.end({ jid, newMessageCount });
         if (newMessageCount > 0) {
@@ -1804,6 +1890,44 @@ async function syncChatMessages(jid, lastSyncTime) {
     } catch (error) {
         timer.end({ error: true });
         log.debug(`Failed to sync messages for ${jid}`, error);
+        return 0;
+    }
+}
+
+// Sync existing contact avatars to chats table
+async function syncContactAvatarsToChats() {
+    const timer = performance.start('sync_contact_avatars_to_chats');
+
+    try {
+        // Get all contacts that have avatars but corresponding chats don't
+        const sql = `
+            SELECT c.jid, c.avatar_base64
+            FROM contacts c
+            JOIN chats ch ON c.jid = ch.jid
+            WHERE c.avatar_base64 IS NOT NULL
+            AND ch.avatar_base64 IS NULL
+        `;
+
+        const contactsWithAvatars = await database.all(sql);
+        let syncedCount = 0;
+
+        for (const contact of contactsWithAvatars) {
+            try {
+                await database.updateChatAvatar(contact.jid, contact.avatar_base64);
+                syncedCount++;
+                log.debug(`Synced avatar from contact to chat: ${contact.jid}`);
+            } catch (error) {
+                log.debug(`Failed to sync avatar for ${contact.jid}`, error);
+            }
+        }
+
+        timer.end({ syncedCount });
+        log.info(`Synced ${syncedCount} contact avatars to chats table`);
+
+        return syncedCount;
+    } catch (error) {
+        timer.end({ error: true });
+        log.debug('Failed to sync contact avatars to chats', error);
         return 0;
     }
 }
@@ -1823,11 +1947,27 @@ async function syncContactData(jid) {
         // Get existing contact info
         const existingContact = await database.getContact(jid);
 
+        // Check if we've synced this contact recently (within last hour)
+        const lastSyncTime = existingContact?.updated_at || 0;
+        const timeSinceLastSync = Date.now() - (lastSyncTime * 1000);
+        const oneHour = 60 * 60 * 1000;
+
+        // Skip if synced recently and we already have both name and avatar
+        if (timeSinceLastSync < oneHour &&
+            existingContact?.name &&
+            existingContact?.avatar_base64) {
+            log.debug(`Skipping sync for ${jid} - recently synced and complete`);
+            return { nameUpdated, avatarDownloaded };
+        }
+
         // Check if we need to update group metadata
         if (jid.endsWith('@g.us')) {
             try {
                 const groupMetadata = await sock.groupMetadata(jid);
-                if (groupMetadata?.subject && groupMetadata.subject !== existingContact?.name) {
+                // Only update if we have a new name and it's different from what we have
+                if (groupMetadata?.subject &&
+                    groupMetadata.subject.trim() !== '' &&
+                    groupMetadata.subject !== existingContact?.name) {
                     await database.saveContact(jid, groupMetadata.subject);
                     nameUpdated = true;
                     log.debug(`Updated group name: ${jid} -> ${groupMetadata.subject}`);
@@ -1837,7 +1977,15 @@ async function syncContactData(jid) {
             }
         }
 
-        // Avatar sync removed - using base64 only now
+        // Download avatar if we don't have one
+        if (jid.endsWith('@g.us')) {
+            // For groups, download chat avatar
+            avatarDownloaded = await downloadChatAvatar(jid);
+        } else {
+            // For individual contacts, download contact avatar
+            const contactInfo = await downloadContactInfo(jid);
+            avatarDownloaded = contactInfo.avatarDownloaded;
+        }
 
         timer.end({ jid, nameUpdated, avatarDownloaded });
         return { nameUpdated, avatarDownloaded };
