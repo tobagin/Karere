@@ -3,6 +3,7 @@
 
 import { Boom } from '@hapi/boom';
 import baileys from '@whiskeysockets/baileys';
+import P from 'pino'
 import { WebSocketServer } from 'ws';
 import qrcode from 'qrcode';
 import fs from 'fs/promises';
@@ -554,7 +555,7 @@ async function connectToWhatsApp() {
             version,
             auth: state,
             printQRInTerminal: false,
-            browser: Browsers.macOS('Desktop'),
+            browser: Browsers.ubuntu('Desktop'),
             connectTimeoutMs: 60000,
             defaultQueryTimeoutMs: 60000,
             keepAliveIntervalMs: 10000,
@@ -580,7 +581,6 @@ async function connectToWhatsApp() {
         sock.ev.on('creds.update', saveCreds);
         sock.ev.on('messages.upsert', handleMessagesUpsert);
         sock.ev.on('presence.update', handlePresenceUpdate);
-        sock.ev.on('chats.set', handleHistorySet);
         sock.ev.on('messaging-history.set', handleHistorySet);
 
         // Debug all events to see what's happening
@@ -696,11 +696,10 @@ async function handleConnectionUpdate(update) {
 }
 
 async function handleHistorySet(item) {
-    const timer = performance.start('history_set');
+    const timer = performance.start('messaging_history_set');
 
     try {
-        const eventType = item.isLatest ? 'messaging-history.set' : 'chats.set';
-        log.baileys(`Received history via "${eventType}"`, {
+        log.baileys('Received messaging-history.set event', {
             chatCount: item.chats?.length || 0,
             messageCount: item.messages?.length || 0,
             isLatest: item.isLatest,
@@ -1376,40 +1375,58 @@ async function loadMessagesForChat(jid, limit = 50) {
         // Try multiple methods to get message history
         let messages = [];
 
-        // Method 1: Try fetchMessageHistory
+        // Method 1: Try fetchMessageHistory with correct signature
         try {
-            const history = await sock.fetchMessageHistory(jid, limit);
-            if (history && history.messages) {
-                messages = history.messages;
-                log.debug(`fetchMessageHistory returned ${messages.length} messages for ${jid}`);
+            // Get the oldest message key and timestamp for this chat
+            const existingMessages = await database.getMessages(jid, 1);
+            let oldestMsgKey, oldestMsgTimestamp;
+
+            if (existingMessages.length > 0) {
+                // Use existing message as reference point
+                const oldestMsg = existingMessages[0];
+                oldestMsgKey = {
+                    remoteJid: jid,
+                    fromMe: false,
+                    id: oldestMsg.id
+                };
+                oldestMsgTimestamp = oldestMsg.timestamp;
+            } else {
+                // No existing messages, use a recent timestamp to get recent history
+                oldestMsgTimestamp = Date.now() - (7 * 24 * 60 * 60 * 1000); // 7 days ago
+                oldestMsgKey = {
+                    remoteJid: jid,
+                    fromMe: false,
+                    id: 'dummy_' + Date.now()
+                };
+            }
+
+            log.debug(`Requesting ${limit} messages for ${jid} using fetchMessageHistory`);
+            const historyId = await sock.fetchMessageHistory(limit, oldestMsgKey, oldestMsgTimestamp);
+
+            if (historyId) {
+                log.info(`Successfully requested message history for ${jid}, historyId: ${historyId}`);
+                // Messages will be delivered via messaging-history.set event
+                // Wait a bit for the messages to arrive
+                await new Promise(resolve => setTimeout(resolve, 3000));
+
+                // Check if we received new messages
+                const newMessages = await database.getMessages(jid, limit);
+                if (newMessages.length > existingMessages.length) {
+                    messages = newMessages.slice(existingMessages.length);
+                    log.debug(`fetchMessageHistory delivered ${messages.length} new messages for ${jid}`);
+                }
             }
         } catch (fetchError) {
             log.debug(`fetchMessageHistory failed for ${jid}: ${fetchError.message}`);
         }
 
-        // Method 2: If no messages, try loadMessages
+        // Method 2: If no messages from fetchMessageHistory, check what we have in database
         if (messages.length === 0) {
-            try {
-                const loadedMessages = await sock.loadMessages(jid, limit);
-                if (loadedMessages && loadedMessages.length > 0) {
-                    messages = loadedMessages;
-                    log.debug(`loadMessages returned ${messages.length} messages for ${jid}`);
-                }
-            } catch (loadError) {
-                log.debug(`loadMessages failed for ${jid}: ${loadError.message}`);
-            }
-        }
-
-        // Method 3: If still no messages, try getting chat and then messages
-        if (messages.length === 0) {
-            try {
-                const chat = await sock.chatRead(jid);
-                if (chat && chat.messages) {
-                    messages = Object.values(chat.messages);
-                    log.debug(`chatRead returned ${messages.length} messages for ${jid}`);
-                }
-            } catch (chatError) {
-                log.debug(`chatRead failed for ${jid}: ${chatError.message}`);
+            log.debug(`No new messages from fetchMessageHistory for ${jid}, checking database`);
+            const dbMessages = await database.getMessages(jid, limit);
+            if (dbMessages.length > 0) {
+                log.debug(`Found ${dbMessages.length} existing messages in database for ${jid}`);
+                return dbMessages.length; // Return count of existing messages
             }
         }
 
