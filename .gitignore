@@ -12,6 +12,12 @@ baileys_auth_info/
 .wwebjs_auth/
 .wwebjs_cache/
 
+app-state*.json
+pre-key*.json
+*.filez
+*.dirtree
+repo/
+
 # Database files
 *.db
 *.db-shm

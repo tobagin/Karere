@@ -13,9 +13,7 @@ from io import BytesIO
 import os
 APP_ID = os.environ.get('FLATPAK_ID', 'io.github.tobagin.Karere')
 
-# Import our custom components
-from chat_list_page import ChatListPage
-from chat_page import ChatPage
+# Import our custom components (will be imported when needed to avoid circular imports)
 
 class ChatRow(Gtk.ListBoxRow):
     def __init__(self, jid, last_message, timestamp=None, unread_count=0):
@@ -174,6 +172,7 @@ class KarereWindow(Adw.ApplicationWindow):
         self._load_pages()
 
         # Create and initialize ChatListPage
+        from chat_list_page import ChatListPage
         self.chat_list_page = ChatListPage()
         self.chat_list_page.set_window(self)
 
@@ -313,6 +312,7 @@ class KarereWindow(Adw.ApplicationWindow):
     def create_chat_page(self, jid):
         """Create a ChatPage for a chat."""
         # Create ChatPage instance
+        from chat_page import ChatPage
         chat_page = ChatPage(jid)
         chat_page.set_window(self)
 

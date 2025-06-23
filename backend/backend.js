@@ -38,6 +38,8 @@ let isInitialized = false;
 // WebSocket server with enhanced error handling
 let wss = null;
 
+
+
 // Initialize the backend
 async function initializeBackend() {
     if (isInitialized) {
@@ -58,6 +60,8 @@ async function initializeBackend() {
         // Initialize WebSocket server
         await initializeWebSocketServer();
         serviceManager.registerService('websocket', { shutdown: closeWebSocketServer });
+
+
 
         // Initialize WhatsApp connection
         await connectToWhatsApp();
@@ -105,13 +109,34 @@ async function closeWebSocketServer() {
     }
 }
 
+
+
 function getDisplayMessage(msg) {
-    if (!msg || !msg.message) return '';
-    const message = msg.message;
-    if (message.conversation) return message.conversation;
-    if (message.extendedTextMessage) return message.extendedTextMessage.text;
-    if (message.imageMessage) return message.imageMessage.caption || '[Image]';
-    if (message.videoMessage) return message.videoMessage.caption || '[Video]';
+    if (!msg) return '';
+
+    // Handle both regular messages and history messages
+    // History messages have structure: msg.message.message.conversation
+    // Regular messages have structure: msg.message.conversation
+    let messageObj = msg.message;
+
+    // If this is a history message, unwrap the nested structure
+    if (messageObj && messageObj.message) {
+        messageObj = messageObj.message;
+    }
+
+    if (!messageObj) return '';
+
+    // Handle different message types
+    if (messageObj.conversation) return messageObj.conversation;
+    if (messageObj.extendedTextMessage) return messageObj.extendedTextMessage.text;
+    if (messageObj.imageMessage) return messageObj.imageMessage.caption || '[Image]';
+    if (messageObj.videoMessage) return messageObj.videoMessage.caption || '[Video]';
+    if (messageObj.audioMessage) return '[Audio]';
+    if (messageObj.documentMessage) return messageObj.documentMessage.title || '[Document]';
+    if (messageObj.stickerMessage) return '[Sticker]';
+    if (messageObj.locationMessage) return '[Location]';
+    if (messageObj.contactMessage) return '[Contact]';
+
     return '[Unsupported Message]';
 }
 
@@ -329,11 +354,11 @@ async function handleGetMessageHistory(data) {
     try {
         log.message('Fetching message history', { jid, limit, offset });
 
-        // First try to get from database with enhanced message data
+        // Get messages from database with enhanced message data
         let messages = await database.getMessagesWithSender(jid, limit, offset);
 
         if (messages.length === 0 && sock && baileysConnectionStatus === 'open') {
-            // If no messages in database, try to fetch from Baileys
+            // If no messages in database, try to fetch from Baileys directly
             try {
                 const baileysMessages = await sock.fetchMessageHistory(jid, limit);
 
@@ -555,14 +580,14 @@ async function connectToWhatsApp() {
             version,
             auth: state,
             printQRInTerminal: false,
-            browser: Browsers.ubuntu('Desktop'),
+            browser: ['Karere', 'Chrome', '1.0.0'], // Use macOS for better history
             connectTimeoutMs: 60000,
             defaultQueryTimeoutMs: 60000,
             keepAliveIntervalMs: 10000,
-            syncFullHistory: true,
-            markOnlineOnConnect: false,
+            syncFullHistory: true, // Enable full history sync
+            markOnlineOnConnect: false, // Keep notifications on phone
             getMessage: async (key) => {
-                // Implement getMessage for message resending and poll decryption
+                // Get message from database for message resending and poll decryption
                 try {
                     const message = await database.getMessage(key.id);
                     return message ? {
@@ -576,6 +601,8 @@ async function connectToWhatsApp() {
                 }
             }
         });
+
+
 
         sock.ev.on('connection.update', handleConnectionUpdate);
         sock.ev.on('creds.update', saveCreds);
@@ -715,94 +742,138 @@ async function handleConnectionUpdate(update) {
 }
 
 async function handleHistorySet(item) {
-    const timer = performance.start('messaging_history_set');
+    const timer = performance.start('messaging_history_set_progressive');
 
     try {
-        log.baileys('Received messaging-history.set event', {
-            chatCount: item.chats?.length || 0,
-            messageCount: item.messages?.length || 0,
-            isLatest: item.isLatest,
-            hasMessages: !!item.messages
-        });
-
-        const chats = [];
-
-        for (const chat of item.chats) {
-            const lastMessage = chat.messages?.[0];
-            const lastMessageType = lastMessage ? getMessageType(lastMessage) : 'text';
-            const lastMessageContent = lastMessage ? getDisplayMessage(lastMessage) : null;
-            const lastMessageFrom = lastMessage ? (lastMessage.key.fromMe ? 'me' : chat.id) : null;
-
-            const chatData = {
-                jid: chat.id,
-                name: chat.name || chat.id,
-                lastMessage: formatLastMessageContent(lastMessageContent, lastMessageType),
-                timestamp: lastMessage?.messageTimestamp * 1000 || Date.now(),
-                lastMessageType: lastMessageType,
-                lastMessageFrom: lastMessageFrom,
-                unreadCount: chat.unreadCount || 0,
-                avatarBase64: null, // Will be populated by contact sync
-                chatAvatarBase64: null, // Will be populated by chat avatar download
-                phoneNumber: null // Will be populated by contact sync
-            };
-
-            chats.push(chatData);
-
-            // Save chat to database with enhanced data
-            await database.saveChat(
-                chatData.jid,
-                chatData.name,
-                lastMessage?.key?.id,
-                chatData.timestamp,
-                null, // avatar will be downloaded separately
-                lastMessageType,
-                lastMessageFrom
-            );
-
-            // Save contact information if available
-            if (chat.name && chat.name !== chat.id) {
-                await database.saveContact(chat.id, chat.name);
-                log.debug(`Saved contact: ${chat.id} -> ${chat.name}`);
-            }
-
-            // Save messages from this chat
-            if (chat.messages && chat.messages.length > 0) {
-                log.info(`Saving ${chat.messages.length} messages for chat ${chat.id}`);
-                let savedMessageCount = 0;
-
-                for (const msg of chat.messages) { // Save ALL messages from history
-                    try {
-                        const messageContent = getDisplayMessage(msg);
-                        const messageType = getMessageType(msg);
-
-                        if (messageContent && msg.key?.id) {
-                            await database.saveMessage(
-                                msg.key.id,
-                                chat.id,
-                                msg.key.fromMe || false,
-                                messageContent,
-                                msg.messageTimestamp * 1000,
-                                messageType,
-                                msg.key.fromMe ? 'sent' : 'received',
-                                msg.pushName || chat.name
-                            );
-                            savedMessageCount++;
-                            log.debug(`Saved message: ${msg.key.id} in chat ${chat.id}`);
-                        }
-                    } catch (msgError) {
-                        log.debug('Failed to save message from history', {
-                            chatId: chat.id,
-                            messageId: msg.key?.id,
-                            error: msgError.message
-                        });
-                    }
-                }
-
-                if (savedMessageCount > 0) {
-                    log.info(`Successfully saved ${savedMessageCount} messages for chat ${chat.id}`);
+        // Calculate total messages across all chats
+        let totalMessages = 0;
+        if (item.chats) {
+            for (const chat of item.chats) {
+                if (chat.messages) {
+                    totalMessages += chat.messages.length;
                 }
             }
         }
+
+        const currentTime = Date.now();
+        const collectionSession = `progressive-sync-${currentTime}`;
+
+        log.baileys('🚀 PROGRESSIVE HISTORY: Received messaging-history.set event', {
+            chatCount: item.chats?.length || 0,
+            totalMessagesInAllChats: totalMessages,
+            isLatest: item.isLatest,
+            collectionSession: collectionSession,
+            itemKeys: Object.keys(item)
+        });
+
+        const chats = [];
+        let newChatsCount = 0;
+        let existingChatsCount = 0;
+        let totalNewMessages = 0;
+
+        for (const chat of item.chats) {
+            try {
+                // Check if this chat already has a history baseline
+                const historyInfo = await database.getChatHistoryInfo(chat.id);
+                const isNewChat = !historyInfo || !historyInfo.history_baseline_timestamp;
+
+                const lastMessage = chat.messages?.[0];
+                const lastMessageType = lastMessage ? getMessageType(lastMessage) : 'text';
+                const lastMessageContent = lastMessage ? getDisplayMessage(lastMessage) : null;
+                const lastMessageFrom = lastMessage ? (lastMessage.key.fromMe ? 'me' : chat.id) : null;
+                const lastMessageTimestamp = lastMessage ? getMessageTimestamp(lastMessage) : Date.now();
+
+                const chatData = {
+                    jid: chat.id,
+                    name: chat.name || chat.id,
+                    lastMessage: formatLastMessageContent(lastMessageContent, lastMessageType),
+                    timestamp: lastMessageTimestamp,
+                    lastMessageType: lastMessageType,
+                    lastMessageFrom: lastMessageFrom,
+                    unreadCount: chat.unreadCount || 0,
+                    avatarBase64: null,
+                    chatAvatarBase64: null,
+                    phoneNumber: null
+                };
+
+                chats.push(chatData);
+
+                // Save/update chat in database
+                await database.saveChat(
+                    chatData.jid,
+                    chatData.name,
+                    lastMessage?.key?.id,
+                    chatData.timestamp,
+                    null,
+                    lastMessageType,
+                    lastMessageFrom
+                );
+
+                // Save contact information if available
+                if (chat.name && chat.name !== chat.id) {
+                    await database.saveContact(chat.id, chat.name);
+                }
+
+                if (isNewChat) {
+                    // NEW CHAT: Set baseline and save all messages
+                    newChatsCount++;
+
+                    if (chat.messages && chat.messages.length > 0) {
+                        const oldestMessage = chat.messages[chat.messages.length - 1];
+                        const baselineTimestamp = getMessageTimestamp(oldestMessage);
+
+                        // Set history baseline
+                        await database.setChatHistoryBaseline(chat.id, baselineTimestamp);
+
+                        log.baileys(`📱 NEW CHAT: ${chat.id} - Setting baseline at ${new Date(baselineTimestamp).toISOString()}`);
+
+                        // Save all messages with initial-sync session
+                        const savedCount = await saveMessagesFromHistory(chat, `initial-sync-${currentTime}`);
+                        totalNewMessages += savedCount;
+
+                        log.baileys(`✅ NEW CHAT: Saved ${savedCount} messages for ${chat.id}`);
+                    }
+                } else {
+                    // EXISTING CHAT: Only save messages newer than last sync
+                    existingChatsCount++;
+                    const lastSyncTime = historyInfo.last_sync_timestamp || historyInfo.history_baseline_timestamp;
+
+                    if (chat.messages && chat.messages.length > 0) {
+                        // Filter messages newer than last sync
+                        const newMessages = chat.messages.filter(msg => {
+                            const msgTimestamp = getMessageTimestamp(msg);
+                            return msgTimestamp > lastSyncTime;
+                        });
+
+                        if (newMessages.length > 0) {
+                            log.baileys(`📈 EXISTING CHAT: ${chat.id} - Found ${newMessages.length} new messages since ${new Date(lastSyncTime).toISOString()}`);
+
+                            // Save only new messages
+                            const savedCount = await saveMessagesFromHistory({ ...chat, messages: newMessages }, collectionSession);
+                            totalNewMessages += savedCount;
+
+                            log.baileys(`✅ EXISTING CHAT: Saved ${savedCount} new messages for ${chat.id}`);
+                        } else {
+                            log.debug(`📊 EXISTING CHAT: ${chat.id} - No new messages since last sync`);
+                        }
+                    }
+                }
+
+                // Update last sync timestamp for all chats
+                await database.updateChatSyncTimestamp(chat.id, currentTime);
+
+            } catch (chatError) {
+                log.error(`❌ Error processing chat ${chat.id}`, chatError);
+            }
+        }
+
+        log.baileys('📊 PROGRESSIVE HISTORY SUMMARY', {
+            totalChats: item.chats?.length || 0,
+            newChats: newChatsCount,
+            existingChats: existingChatsCount,
+            totalNewMessages: totalNewMessages,
+            collectionSession: collectionSession
+        });
 
         initialChatsPayload = { chats };
 
@@ -812,12 +883,76 @@ async function handleHistorySet(item) {
             clientIsWaitingForChats = false;
         }
 
-        timer.end({ chatCount: chats.length });
+        timer.end({
+            chatCount: chats.length,
+            newChats: newChatsCount,
+            existingChats: existingChatsCount,
+            totalNewMessages: totalNewMessages
+        });
 
     } catch (error) {
         timer.end({ error: true });
-        log.error('Error handling history set', error);
+        log.error('Error handling progressive history set', error);
     }
+}
+
+// Helper function to save messages from history with session tracking
+async function saveMessagesFromHistory(chat, collectionSession) {
+    let savedMessageCount = 0;
+    let skippedMessageCount = 0;
+
+    if (!chat.messages || chat.messages.length === 0) {
+        return 0;
+    }
+
+    for (const msg of chat.messages) {
+        try {
+            const messageContent = getDisplayMessage(msg);
+            const messageType = getMessageType(msg);
+            const messageKey = getMessageKey(msg);
+            const timestamp = getMessageTimestamp(msg);
+
+            if (messageKey?.id) {
+                await database.saveMessage(
+                    messageKey.id,
+                    chat.id,
+                    messageKey.fromMe || false,
+                    messageContent || '[Message content unavailable]',
+                    timestamp,
+                    messageType,
+                    messageKey.fromMe ? 'sent' : 'received',
+                    msg.pushName || msg.participant || chat.name || 'Unknown',
+                    collectionSession // Add collection session tracking
+                );
+                savedMessageCount++;
+
+                if (savedMessageCount <= 3) { // Log first few messages for debugging
+                    log.debug(`💾 Saved message ${savedMessageCount}: ${messageKey.id} - "${messageContent?.substring(0, 50)}..." [${collectionSession}]`);
+                }
+            } else {
+                skippedMessageCount++;
+                log.debug(`⚠️ Skipped message without valid key in chat ${chat.id}`, {
+                    hasMessage: !!msg.message,
+                    hasKey: !!messageKey,
+                    hasId: !!messageKey?.id
+                });
+            }
+        } catch (msgError) {
+            skippedMessageCount++;
+            log.error('❌ Failed to save message from history', {
+                chatId: chat.id,
+                messageId: getMessageKey(msg)?.id,
+                error: msgError.message,
+                collectionSession: collectionSession
+            });
+        }
+    }
+
+    if (savedMessageCount > 0) {
+        log.debug(`📊 Chat ${chat.id}: ${savedMessageCount} saved, ${skippedMessageCount} skipped [${collectionSession}]`);
+    }
+
+    return savedMessageCount;
 }
 
 // Add missing message handling functions
@@ -833,7 +968,7 @@ async function handleMessagesUpsert(m) {
                 const contactName = msg.pushName || msg.notify || null;
                 const jid = msg.key.remoteJid;
 
-                // Save message to database with sender name
+                // Save message to database with sender name and real-time session
                 await database.saveMessage(
                     msg.key.id,
                     jid,
@@ -842,7 +977,8 @@ async function handleMessagesUpsert(m) {
                     msg.messageTimestamp * 1000,
                     'text',
                     'received',
-                    contactName // Pass sender name
+                    contactName, // Pass sender name
+                    'real-time' // Collection session for real-time messages
                 );
 
                 // Get updated contact info
@@ -1504,7 +1640,19 @@ async function loadMessagesForChat(jid, limit = 50) {
 
 // Get message type from WhatsApp message object
 function getMessageType(msg) {
-    if (!msg.message) return 'text';
+    if (!msg) return 'text';
+
+    // Handle both regular messages and history messages
+    // History messages have structure: msg.message.message.conversation
+    // Regular messages have structure: msg.message.conversation
+    let messageObj = msg.message;
+
+    // If this is a history message, unwrap the nested structure
+    if (messageObj && messageObj.message) {
+        messageObj = messageObj.message;
+    }
+
+    if (!messageObj) return 'text';
 
     const messageTypes = {
         conversation: 'text',
@@ -1528,12 +1676,64 @@ function getMessageType(msg) {
     };
 
     for (const [type, displayType] of Object.entries(messageTypes)) {
-        if (msg.message[type]) {
+        if (messageObj[type]) {
             return displayType;
         }
     }
 
     return 'unknown';
+}
+
+// Extract timestamp from message (handles both regular and history message formats)
+function getMessageTimestamp(msg) {
+    if (!msg) return Date.now();
+
+    // Handle both regular messages and history messages
+    let timestamp = msg.messageTimestamp;
+
+    // If this is a history message, get timestamp from nested structure
+    if (msg.message && msg.message.messageTimestamp) {
+        timestamp = msg.message.messageTimestamp;
+    }
+
+    if (!timestamp) return Date.now();
+
+    // Handle Long objects (from protobuf) with low/high/unsigned properties
+    if (typeof timestamp === 'object' && timestamp.low !== undefined) {
+        // Convert Long object to number
+        const low = timestamp.low >>> 0; // Convert to unsigned 32-bit
+        const high = timestamp.high >>> 0; // Convert to unsigned 32-bit
+        return (high * 0x100000000 + low) * 1000; // Convert to milliseconds
+    }
+
+    // Handle regular number timestamps
+    if (typeof timestamp === 'number') {
+        return timestamp * 1000; // Convert to milliseconds
+    }
+
+    // Handle string timestamps
+    if (typeof timestamp === 'string') {
+        return parseInt(timestamp) * 1000; // Convert to milliseconds
+    }
+
+    return Date.now();
+}
+
+// Extract message key from message (handles both regular and history message formats)
+function getMessageKey(msg) {
+    if (!msg) return null;
+
+    // Handle both regular messages and history messages
+    if (msg.key) {
+        return msg.key;
+    }
+
+    // If this is a history message, get key from nested structure
+    if (msg.message && msg.message.key) {
+        return msg.message.key;
+    }
+
+    return null;
 }
 
 // Format last message content according to requirements
@@ -2074,6 +2274,8 @@ async function main() {
         process.exit(1);
     }
 }
+
+
 
 // Start the application
 main().catch((error) => {

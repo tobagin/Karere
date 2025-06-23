@@ -12,7 +12,7 @@ add-extensions:
     add-ld-path: .
 
 finish-args:
-  # Network access for WhatsApp Web
+  # Network access for WhatsApp Web API (Baileys backend)
   - --share=network
   # Access to display for GUI
   - --share=ipc
@@ -28,14 +28,29 @@ finish-args:
   - --talk-name=org.freedesktop.Notifications
   # Session bus access
   - --socket=session-bus
-  # Allow spawning subprocesses (for backend)
+  # Allow spawning subprocesses (for Baileys backend)
   - --allow=devel
-  # Chromium needs these permissions
-  - --device=dri
-  - --filesystem=xdg-run/pipewire-0:ro
 
 modules:
-  # Node.js runtime for the backend
+  # Blueprint compiler for UI files
+  - name: blueprint-compiler
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://gitlab.gnome.org/jwestman/blueprint-compiler.git
+        tag: v0.16.0
+
+  # Python dependencies for the frontend
+  - name: python3-websocket-client
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} "websocket-client" --no-build-isolation
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/5a/84/44687a29792a70e111c5c477230a72c4b957d88d16141199bf9acb7537a3/websocket_client-1.8.0-py3-none-any.whl
+        sha256: 17b44cc997f5c498e809b22cdf2d9c7a9e71c02c8cc2b6c56e7c2d1239bfa526
+
+  # Node.js runtime for the backend (must come before Git dependencies)
   - name: nodejs
     buildsystem: simple
     build-commands:
@@ -58,107 +73,78 @@ modules:
         only-arches:
           - x86_64
 
-  # Download and install Chromium for whatsapp-web.js backend
-  - name: chromium
+  # Git dependencies for Baileys - install without npm
+  - name: libsignal-node
     buildsystem: simple
     build-commands:
-      # Extract Chromium from the downloaded archive
-      - mkdir -p /app/chromium
-      - unzip -q chrome-linux.zip
-      - cp -r chrome-linux/* /app/chromium/
-      # Create wrapper script for Chromium
-      - mkdir -p /app/bin
+      # Install to global node_modules location (no npm install needed for this simple package)
+      - mkdir -p /app/lib/node_modules
+      - cp -r . /app/lib/node_modules/libsignal
+    sources:
+      - type: git
+        url: https://github.com/WhiskeySockets/libsignal-node.git
+        commit: 4d08331a833727c338c1a90041d17b870210dfae
+
+  - name: whiskeysockets-eslint-config
+    buildsystem: simple
+    build-commands:
+      # Install to global node_modules location (no npm install needed for this simple package)
+      - mkdir -p /app/lib/node_modules/@whiskeysockets
+      - cp -r . /app/lib/node_modules/@whiskeysockets/eslint-config
+    sources:
+      - type: git
+        url: https://github.com/whiskeysockets/eslint-config.git
+        commit: f264cd06d24a43f76e4ad2d81528f8485a1e7efe
+
+
+
+  # NPM dependencies for backend
+  - name: npm-dependencies
+    buildsystem: simple
+    build-commands:
+      # Create a temporary package.json and package-lock.json
       - |
-        cat > /app/bin/chromium-browser << 'EOF'
-        #!/bin/bash
-        # Set up Chromium environment for Flatpak sandbox
-        export CHROME_WRAPPER=/app/bin/chromium-browser
-        export CHROME_DESKTOP=karere-chromium.desktop
-
-        # Chromium arguments for sandboxed environment
-        CHROMIUM_FLAGS=(
-          --no-sandbox
-          --disable-setuid-sandbox
-          --disable-dev-shm-usage
-          --disable-gpu-sandbox
-          --disable-software-rasterizer
-          --disable-background-timer-throttling
-          --disable-backgrounding-occluded-windows
-          --disable-renderer-backgrounding
-          --disable-features=TranslateUI,VizDisplayCompositor
-          --disable-ipc-flooding-protection
-          --no-first-run
-          --disable-default-apps
-          --disable-extensions
-          --disable-sync
-          --disable-translate
-          --disable-background-networking
-          --disable-background-timer-throttling
-          --disable-client-side-phishing-detection
-          --disable-component-update
-          --disable-default-apps
-          --disable-domain-reliability
-          --disable-features=AudioServiceOutOfProcess,VizDisplayCompositor
-          --disable-hang-monitor
-          --disable-ipc-flooding-protection
-          --disable-popup-blocking
-          --disable-prompt-on-repost
-          --disable-renderer-backgrounding
-          --disable-sync
-          --disable-translate
-          --disable-windows10-custom-titlebar
-          --metrics-recording-only
-          --no-first-run
-          --no-default-browser-check
-          --no-pings
-          --password-store=basic
-          --use-mock-keychain
-          --user-data-dir="$XDG_DATA_HOME/karere/chromium"
-        )
-
-        # Create user data directory
-        mkdir -p "$XDG_DATA_HOME/karere/chromium"
-
-        # Execute Chromium with our flags
-        exec /app/chromium/chrome "${CHROMIUM_FLAGS[@]}" "$@"
+        cat > package.json << 'EOF'
+        {
+          "name": "karere-backend-deps",
+          "version": "1.0.0",
+          "dependencies": {
+            "@cacheable/node-cache": "1.5.6",
+            "@hapi/boom": "10.0.1",
+            "@hapi/hoek": "11.0.7",
+            "async-mutex": "0.4.1",
+            "axios": "1.10.0",
+            "lodash": "4.17.21",
+            "music-metadata": "9.0.3",
+            "pino": "8.21.0",
+            "protobufjs": "7.5.3",
+            "ws": "8.18.2"
+          }
+        }
         EOF
-      - chmod +x /app/bin/chromium-browser
-      # Create symlinks for compatibility
-      - ln -sf chromium-browser /app/bin/chrome
-      - ln -sf chromium-browser /app/bin/google-chrome
+      # Generate package-lock.json
+      - npm install --package-lock-only --no-audit --no-fund
+      # Install dependencies using npm ci with the generated sources
+      - npm ci --cache=flatpak-node/npm-cache --offline --no-audit --no-fund
+      # Copy node_modules to the app location
+      - mkdir -p /app/share/karere-backend
+      - cp -r node_modules /app/share/karere-backend/
     sources:
-      - type: archive
-        url: https://storage.googleapis.com/chromium-browser-snapshots/Linux_x64/1477121/chrome-linux.zip
-        sha256: 1b3593019d0f48882af91bc686643a23e8f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2
-        strip-components: 1
-        only-arches:
-          - x86_64
-      - type: archive
-        url: https://storage.googleapis.com/chromium-browser-snapshots/Linux_ARM64/1477121/chrome-linux.zip
-        sha256: 2c4694029e1f58992bf02bc797754b34f9f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3
-        strip-components: 1
-        only-arches:
-          - aarch64
-
-  # Python dependencies for the frontend
-  - name: python-dependencies
-    buildsystem: simple
-    build-commands:
-      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} pygobject
-    sources:
-      - type: file
-        url: https://files.pythonhosted.org/packages/source/P/PyGObject/PyGObject-3.48.2.tar.gz
-        sha256: 0794ba6f7a2b8f1d8b9b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b
+      - npm-sources-clean.json
 
   # Main Karere application
   - name: karere
-    buildsystem: meson
-    config-opts:
-      - -Dflatpak=true
+    buildsystem: simple
     build-commands:
-      # Install backend dependencies
-      - cd backend && npm ci --production --no-optional
-      # Build frontend
+      # Set up NODE_PATH to include our pre-installed Git dependencies
+      - export NODE_PATH="/app/lib/node_modules:$NODE_PATH"
+      # Create symlinks for Git dependencies in backend node_modules
+      - mkdir -p backend/node_modules/@whiskeysockets
+      - ln -sf /app/lib/node_modules/@whiskeysockets/eslint-config backend/node_modules/@whiskeysockets/eslint-config
+      - ln -sf /app/lib/node_modules/libsignal backend/node_modules/libsignal
+      # Copy npm dependencies to backend
+      - cp -r /app/share/karere-backend/node_modules/* backend/node_modules/ || true
+      # Build frontend using meson (now that blueprint-compiler is available)
       - meson setup builddir --prefix=/app
       - meson compile -C builddir
       - meson install -C builddir
@@ -166,6 +152,23 @@ modules:
       - mkdir -p /app/share/karere
       - cp -r backend /app/share/karere/
       - cp -r frontend /app/share/karere/
+      # Install PNG icons in all standard sizes
+      - mkdir -p /app/share/icons/hicolor/{16x16,22x22,24x24,32x32,48x48,64x64,128x128,256x256,512x512}/apps
+      - cp frontend/data/icons/hicolor/16x16/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/16x16/apps/
+      - cp frontend/data/icons/hicolor/22x22/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/22x22/apps/
+      - cp frontend/data/icons/hicolor/24x24/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/24x24/apps/
+      - cp frontend/data/icons/hicolor/32x32/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/32x32/apps/
+      - cp frontend/data/icons/hicolor/48x48/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/48x48/apps/
+      - cp frontend/data/icons/hicolor/64x64/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/64x64/apps/
+      - cp frontend/data/icons/hicolor/128x128/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/128x128/apps/
+      - cp frontend/data/icons/hicolor/256x256/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/256x256/apps/
+      - cp frontend/data/icons/hicolor/512x512/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/512x512/apps/
+      # Fix desktop file (meson installs it with the application ID name)
+      - sed -i 's/@EXEC_NAME@/karere/g' /app/share/applications/io.github.tobagin.Karere.desktop
+      # Fix metainfo file (meson installs it as .appdata.xml)
+      - sed -i 's/@APP_ID@/io.github.tobagin.Karere/g' /app/share/metainfo/io.github.tobagin.Karere.appdata.xml
+      # Rename to .metainfo.xml for proper AppStream compliance
+      - mv /app/share/metainfo/io.github.tobagin.Karere.appdata.xml /app/share/metainfo/io.github.tobagin.Karere.metainfo.xml
       # Create launcher script that handles Flatpak environment
       - |
         cat > /app/bin/karere << 'EOF'
@@ -173,7 +176,7 @@ modules:
 
         # Set up environment for Flatpak
         export PATH="/app/bin:$PATH"
-        export NODE_PATH="/app/share/karere/backend/node_modules"
+        export NODE_PATH="/app/lib/node_modules:/app/share/karere/backend/node_modules"
         export KARERE_BACKEND_PATH="/app/share/karere/backend"
         export PYTHONPATH="/app/share/karere:$PYTHONPATH"
 
@@ -184,6 +187,10 @@ modules:
 
         # Change to backend directory for proper relative paths
         cd /app/share/karere/backend
+
+        # Launch Karere with Baileys backend (only supported backend)
+        echo "🚀 Starting Karere (Flatpak edition)"
+        echo "📱 Using Baileys backend - Native WhatsApp Web API without browser dependency"
 
         # Launch the application
         exec python3 -m frontend.karere.main "$@"

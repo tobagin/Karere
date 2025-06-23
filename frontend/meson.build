@@ -32,6 +32,8 @@ blp_files = [
   'data/ui/pages/welcome_page.blp',
   'data/ui/pages/chat_page.blp',
   'data/ui/pages/chat_list_page.blp',
+  'data/ui/pages/download_progress_page.blp',
+  'data/ui/pages/sync_progress_page.blp',
   'data/ui/dialogs/about.blp',
   'data/ui/dialogs/settings.blp',
 ]

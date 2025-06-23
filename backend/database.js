@@ -172,6 +172,39 @@ class Database {
                 await this.run('ALTER TABLE chats ADD COLUMN last_message_from TEXT');
                 log.info('Migration completed: last_message_from column added to chats');
             }
+
+            // Progressive history tracking columns
+            const chatsHasHistoryBaseline = chatsTableInfo.some(column => column.name === 'history_baseline_timestamp');
+            const chatsHasLastSync = chatsTableInfo.some(column => column.name === 'last_sync_timestamp');
+            const chatsHasHistoryComplete = chatsTableInfo.some(column => column.name === 'history_complete');
+
+            if (!chatsHasHistoryBaseline) {
+                log.info('Adding history_baseline_timestamp column to chats table');
+                await this.run('ALTER TABLE chats ADD COLUMN history_baseline_timestamp INTEGER');
+                log.info('Migration completed: history_baseline_timestamp column added to chats');
+            }
+
+            if (!chatsHasLastSync) {
+                log.info('Adding last_sync_timestamp column to chats table');
+                await this.run('ALTER TABLE chats ADD COLUMN last_sync_timestamp INTEGER');
+                log.info('Migration completed: last_sync_timestamp column added to chats');
+            }
+
+            if (!chatsHasHistoryComplete) {
+                log.info('Adding history_complete column to chats table');
+                await this.run('ALTER TABLE chats ADD COLUMN history_complete BOOLEAN DEFAULT 0');
+                log.info('Migration completed: history_complete column added to chats');
+            }
+
+            // Check if collection_session column exists in messages table
+            const messagesTableInfo = await this.all("PRAGMA table_info(messages)");
+            const messagesHasCollectionSession = messagesTableInfo.some(column => column.name === 'collection_session');
+
+            if (!messagesHasCollectionSession) {
+                log.info('Adding collection_session column to messages table');
+                await this.run('ALTER TABLE messages ADD COLUMN collection_session TEXT');
+                log.info('Migration completed: collection_session column added to messages');
+            }
         } catch (error) {
             log.warn('Migration failed', { error: error.message });
             // Don't throw - migrations should be non-fatal
@@ -320,17 +353,110 @@ class Database {
         }
     }
 
+    // Progressive history tracking methods
+    async setChatHistoryBaseline(jid, timestamp) {
+        const timer = performance.start('set_chat_history_baseline');
+
+        try {
+            const sql = `
+                UPDATE chats
+                SET history_baseline_timestamp = ?, updated_at = strftime('%s', 'now')
+                WHERE jid = ?
+            `;
+
+            const result = await this.run(sql, [timestamp, jid]);
+            timer.end({ updated: result.changes > 0 });
+
+            if (result.changes > 0) {
+                log.debug('Chat history baseline set', { jid, timestamp });
+            }
+
+            return result.changes > 0;
+        } catch (error) {
+            timer.end({ error: true });
+            throw errorHandler.database(error, 'setChatHistoryBaseline');
+        }
+    }
+
+    async updateChatSyncTimestamp(jid, timestamp) {
+        const timer = performance.start('update_chat_sync_timestamp');
+
+        try {
+            const sql = `
+                UPDATE chats
+                SET last_sync_timestamp = ?, updated_at = strftime('%s', 'now')
+                WHERE jid = ?
+            `;
+
+            const result = await this.run(sql, [timestamp, jid]);
+            timer.end({ updated: result.changes > 0 });
+
+            if (result.changes > 0) {
+                log.debug('Chat sync timestamp updated', { jid, timestamp });
+            }
+
+            return result.changes > 0;
+        } catch (error) {
+            timer.end({ error: true });
+            throw errorHandler.database(error, 'updateChatSyncTimestamp');
+        }
+    }
+
+    async getChatHistoryInfo(jid) {
+        const timer = performance.start('get_chat_history_info');
+
+        try {
+            const sql = `
+                SELECT jid, history_baseline_timestamp, last_sync_timestamp, history_complete
+                FROM chats
+                WHERE jid = ?
+            `;
+
+            const info = await this.get(sql, [jid]);
+            timer.end({ found: !!info });
+
+            return info;
+        } catch (error) {
+            timer.end({ error: true });
+            throw errorHandler.database(error, 'getChatHistoryInfo');
+        }
+    }
+
+    async getChatsNeedingHistorySync() {
+        const timer = performance.start('get_chats_needing_history_sync');
+
+        try {
+            const sql = `
+                SELECT jid, name, history_baseline_timestamp, last_sync_timestamp
+                FROM chats
+                WHERE history_baseline_timestamp IS NOT NULL
+                  AND (last_sync_timestamp IS NULL OR last_sync_timestamp < strftime('%s', 'now') - 300)
+                  AND history_complete = 0
+                ORDER BY last_message_timestamp DESC
+                LIMIT 10
+            `;
+
+            const chats = await this.all(sql);
+            timer.end({ count: chats.length });
+
+            return chats;
+        } catch (error) {
+            timer.end({ error: true });
+            throw errorHandler.database(error, 'getChatsNeedingHistorySync');
+        }
+    }
+
     // Message operations
-    async saveMessage(id, chatJid, fromMe, content, timestamp, messageType = 'text', status = 'sent', senderName = null) {
+    async saveMessage(id, chatJid, fromMe, content, timestamp, messageType = 'text', status = 'sent', senderName = null, collectionSession = null) {
         const timer = performance.start('save_message');
 
         try {
             const sql = `
-                INSERT OR REPLACE INTO messages (id, chat_jid, from_me, message_type, content, timestamp, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO messages (id, chat_jid, from_me, message_type, content, timestamp, status, collection_session)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             `;
 
-            await this.run(sql, [id, chatJid, fromMe, messageType, content, timestamp, status]);
+            await this.run(sql, [id, chatJid, fromMe, messageType, content, timestamp, status, collectionSession]);
 
             // If this is an incoming message and we have sender name, save/update contact
             if (!fromMe && senderName) {
@@ -418,6 +544,77 @@ class Database {
         } catch (error) {
             timer.end({ error: true });
             throw errorHandler.database(error, 'getMessagesWithSender');
+        }
+    }
+
+    async getMessagesSinceTimestamp(chatJid, sinceTimestamp, limit = 100) {
+        const timer = performance.start('get_messages_since_timestamp');
+
+        try {
+            const sql = `
+                SELECT m.*,
+                       CASE
+                           WHEN m.from_me = 1 THEN 'You'
+                           ELSE COALESCE(cont.name, m.chat_jid)
+                       END as display_sender_name,
+                       cont.avatar_base64 as sender_avatar_base64
+                FROM messages m
+                LEFT JOIN contacts cont ON m.chat_jid = cont.jid
+                WHERE m.chat_jid = ? AND m.timestamp > ?
+                ORDER BY m.timestamp ASC
+                LIMIT ?
+            `;
+
+            const messages = await this.all(sql, [chatJid, sinceTimestamp, limit]);
+            timer.end({ count: messages.length });
+
+            return messages;
+
+        } catch (error) {
+            timer.end({ error: true });
+            throw errorHandler.database(error, 'getMessagesSinceTimestamp');
+        }
+    }
+
+    async getOldestMessageTimestamp(chatJid) {
+        const timer = performance.start('get_oldest_message_timestamp');
+
+        try {
+            const sql = `
+                SELECT MIN(timestamp) as oldest_timestamp
+                FROM messages
+                WHERE chat_jid = ?
+            `;
+
+            const result = await this.get(sql, [chatJid]);
+            timer.end({ found: !!result?.oldest_timestamp });
+
+            return result?.oldest_timestamp || null;
+
+        } catch (error) {
+            timer.end({ error: true });
+            throw errorHandler.database(error, 'getOldestMessageTimestamp');
+        }
+    }
+
+    async getMessageCount(chatJid) {
+        const timer = performance.start('get_message_count');
+
+        try {
+            const sql = `
+                SELECT COUNT(*) as count
+                FROM messages
+                WHERE chat_jid = ?
+            `;
+
+            const result = await this.get(sql, [chatJid]);
+            timer.end({ count: result?.count || 0 });
+
+            return result?.count || 0;
+
+        } catch (error) {
+            timer.end({ error: true });
+            throw errorHandler.database(error, 'getMessageCount');
         }
     }
 
