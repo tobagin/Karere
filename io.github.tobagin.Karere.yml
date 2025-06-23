@@ -4,15 +4,12 @@ runtime-version: '48'
 sdk: org.gnome.Sdk
 command: karere
 
-# Add Chromium extension for whatsapp-web.js backend
+# Add extensions for media and web browser support
 add-extensions:
   org.freedesktop.Platform.ffmpeg-full:
     directory: lib/ffmpeg
     version: '23.08'
     add-ld-path: .
-  org.chromium.Chromium:
-    directory: chromium
-    version: stable
 
 finish-args:
   # Network access for WhatsApp Web
@@ -61,27 +58,87 @@ modules:
         only-arches:
           - x86_64
 
-  # Setup Chromium extension directories
-  - name: chromium-setup
+  # Download and install Chromium for whatsapp-web.js backend
+  - name: chromium
     buildsystem: simple
     build-commands:
-      - mkdir -p /app/chromium /app/lib/ffmpeg
+      # Extract Chromium from the downloaded archive
+      - mkdir -p /app/chromium
+      - unzip -q chrome-linux.zip
+      - cp -r chrome-linux/* /app/chromium/
+      # Create wrapper script for Chromium
       - mkdir -p /app/bin
       - |
         cat > /app/bin/chromium-browser << 'EOF'
         #!/bin/bash
-        # Use Chromium from extension if available, fallback to system
-        if [ -x "/app/chromium/chrome" ]; then
-          exec /app/chromium/chrome "$@"
-        elif [ -x "/usr/bin/chromium-browser" ]; then
-          exec /usr/bin/chromium-browser "$@"
-        else
-          echo "Chromium not found. Please install org.chromium.Chromium extension."
-          exit 1
-        fi
+        # Set up Chromium environment for Flatpak sandbox
+        export CHROME_WRAPPER=/app/bin/chromium-browser
+        export CHROME_DESKTOP=karere-chromium.desktop
+
+        # Chromium arguments for sandboxed environment
+        CHROMIUM_FLAGS=(
+          --no-sandbox
+          --disable-setuid-sandbox
+          --disable-dev-shm-usage
+          --disable-gpu-sandbox
+          --disable-software-rasterizer
+          --disable-background-timer-throttling
+          --disable-backgrounding-occluded-windows
+          --disable-renderer-backgrounding
+          --disable-features=TranslateUI,VizDisplayCompositor
+          --disable-ipc-flooding-protection
+          --no-first-run
+          --disable-default-apps
+          --disable-extensions
+          --disable-sync
+          --disable-translate
+          --disable-background-networking
+          --disable-background-timer-throttling
+          --disable-client-side-phishing-detection
+          --disable-component-update
+          --disable-default-apps
+          --disable-domain-reliability
+          --disable-features=AudioServiceOutOfProcess,VizDisplayCompositor
+          --disable-hang-monitor
+          --disable-ipc-flooding-protection
+          --disable-popup-blocking
+          --disable-prompt-on-repost
+          --disable-renderer-backgrounding
+          --disable-sync
+          --disable-translate
+          --disable-windows10-custom-titlebar
+          --metrics-recording-only
+          --no-first-run
+          --no-default-browser-check
+          --no-pings
+          --password-store=basic
+          --use-mock-keychain
+          --user-data-dir="$XDG_DATA_HOME/karere/chromium"
+        )
+
+        # Create user data directory
+        mkdir -p "$XDG_DATA_HOME/karere/chromium"
+
+        # Execute Chromium with our flags
+        exec /app/chromium/chrome "${CHROMIUM_FLAGS[@]}" "$@"
         EOF
       - chmod +x /app/bin/chromium-browser
+      # Create symlinks for compatibility
       - ln -sf chromium-browser /app/bin/chrome
+      - ln -sf chromium-browser /app/bin/google-chrome
+    sources:
+      - type: archive
+        url: https://storage.googleapis.com/chromium-browser-snapshots/Linux_x64/1477121/chrome-linux.zip
+        sha256: 1b3593019d0f48882af91bc686643a23e8f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2
+        strip-components: 1
+        only-arches:
+          - x86_64
+      - type: archive
+        url: https://storage.googleapis.com/chromium-browser-snapshots/Linux_ARM64/1477121/chrome-linux.zip
+        sha256: 2c4694029e1f58992bf02bc797754b34f9f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3
+        strip-components: 1
+        only-arches:
+          - aarch64
 
   # Python dependencies for the frontend
   - name: python-dependencies
