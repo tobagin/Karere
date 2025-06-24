@@ -185,66 +185,96 @@ class KarereApplication(Adw.Application):
         print("New group action triggered")
 
     def start_backend(self):
-        """Start the backend Node.js process."""
+        """Start the backend process (compiled executable or Node.js)."""
         try:
-            # Find the backend directory
-            backend_paths = [
-                # Development paths
-                os.path.join(os.path.dirname(__file__), '..', '..', 'backend'),
-                # Flatpak paths
-                '/app/share/karere/backend',
-                # System installation paths
-                '/usr/share/karere/backend',
-                '/usr/local/share/karere/backend',
-                # Legacy paths
-                '/usr/share/karere-backend',
-                '/usr/local/share/karere-backend',
-                # Relative paths
-                'backend',
-                '../backend',
-                '../../backend'
-            ]
-
             # Check if running in Flatpak environment
             is_flatpak = os.path.exists('/app') and os.environ.get('FLATPAK_ID') == 'io.github.tobagin.Karere'
-            if is_flatpak:
-                print("Running in Flatpak environment")
-                # Prioritize Flatpak paths
+
+            # Check for compiled executable first (Flatpak environment)
+            backend_executable = os.environ.get('KARERE_BACKEND_EXECUTABLE')
+            if backend_executable and os.path.exists(backend_executable):
+                print(f"Using compiled backend executable: {backend_executable}")
+
+                # Set up environment
+                env = os.environ.copy()
+
+                # Set up data directory for the executable
+                data_dir = os.environ.get('KARERE_DATA_DIR', os.path.expanduser('~/.local/share/karere'))
+                os.makedirs(data_dir, exist_ok=True)
+                env['KARERE_DATA_DIR'] = data_dir
+
+                # Start the compiled executable
+                self.backend_process = subprocess.Popen(
+                    [backend_executable],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=env,
+                    cwd=data_dir,  # Run from data directory
+                    preexec_fn=os.setsid  # Create new process group
+                )
+
+                print(f"Compiled backend started with PID: {self.backend_process.pid}")
+
+            else:
+                # Fall back to Node.js backend for development
+                print("Compiled executable not found, falling back to Node.js backend")
+
+                # Find the backend directory
                 backend_paths = [
-                    '/app/share/karere/backend',
+                    # Development paths
                     os.path.join(os.path.dirname(__file__), '..', '..', 'backend'),
+                    # Flatpak paths
+                    '/app/share/karere/backend',
+                    # System installation paths
+                    '/usr/share/karere/backend',
+                    '/usr/local/share/karere/backend',
+                    # Legacy paths
+                    '/usr/share/karere-backend',
+                    '/usr/local/share/karere-backend',
+                    # Relative paths
+                    'backend',
+                    '../backend',
+                    '../../backend'
                 ]
 
-            backend_dir = None
-            backend_file = None
+                if is_flatpak:
+                    print("Running in Flatpak environment")
+                    # Prioritize Flatpak paths
+                    backend_paths = [
+                        '/app/share/karere/backend',
+                        os.path.join(os.path.dirname(__file__), '..', '..', 'backend'),
+                    ]
 
-            # Use Baileys backend (only supported backend)
-            for path in backend_paths:
-                if os.path.exists(os.path.join(path, 'backend.js')):
-                    backend_dir = path
-                    backend_file = 'backend.js'
-                    break
+                backend_dir = None
+                backend_file = None
 
-            if not backend_dir:
-                print(f"ERROR: Baileys backend not found in any of these locations: {backend_paths}")
-                return False
+                # Use Baileys backend (only supported backend)
+                for path in backend_paths:
+                    if os.path.exists(os.path.join(path, 'backend.js')):
+                        backend_dir = path
+                        backend_file = 'backend.js'
+                        break
 
-            print(f"Starting Baileys backend from: {backend_dir} (using {backend_file})")
+                if not backend_dir:
+                    print(f"ERROR: Baileys backend not found in any of these locations: {backend_paths}")
+                    return False
 
-            # Set up environment for Baileys backend
-            env = os.environ.copy()
+                print(f"Starting Baileys backend from: {backend_dir} (using {backend_file})")
 
-            # Start the backend process
-            self.backend_process = subprocess.Popen(
-                ['node', backend_file],
-                cwd=backend_dir,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=env,
-                preexec_fn=os.setsid  # Create new process group
-            )
+                # Set up environment for Baileys backend
+                env = os.environ.copy()
 
-            print(f"Backend process started with PID: {self.backend_process.pid}")
+                # Start the backend process
+                self.backend_process = subprocess.Popen(
+                    ['node', backend_file],
+                    cwd=backend_dir,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=env,
+                    preexec_fn=os.setsid  # Create new process group
+                )
+
+                print(f"Backend process started with PID: {self.backend_process.pid}")
 
             # Start a thread to monitor backend output
             threading.Thread(target=self._monitor_backend_output, daemon=True).start()

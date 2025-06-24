@@ -13,7 +13,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD_DIR="$PROJECT_ROOT/builddir"
+BUILD_DIR="$PROJECT_ROOT/build"
 
 # Function to print colored output
 print_status() {
@@ -201,7 +201,7 @@ run_karere() {
     echo
     
     # Launch Karere
-    python3 ../frontend/karere/main.py
+    python3 ../src/karere/main.py
 }
 
 # Function to show post-run information
@@ -209,7 +209,7 @@ show_info() {
     if [[ "$BUILD_ONLY" == true ]]; then
         print_success "Build completed! You can now run Karere with:"
         echo "  cd $BUILD_DIR"
-        echo "  python3 ../frontend/karere/main.py"
+        echo "  python3 ../src/karere/main.py"
         return
     fi
     

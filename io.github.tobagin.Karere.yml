@@ -50,119 +50,51 @@ modules:
         url: https://files.pythonhosted.org/packages/5a/84/44687a29792a70e111c5c477230a72c4b957d88d16141199bf9acb7537a3/websocket_client-1.8.0-py3-none-any.whl
         sha256: 17b44cc997f5c498e809b22cdf2d9c7a9e71c02c8cc2b6c56e7c2d1239bfa526
 
-  # Node.js runtime for the backend (must come before Git dependencies)
-  - name: nodejs
+  # Download karere-backend executable
+  - name: karere-backend
     buildsystem: simple
     build-commands:
-      - mkdir -p /app/bin /app/lib /app/include /app/share
-      - cp -r bin/* /app/bin/
-      - cp -r lib/* /app/lib/
-      - cp -r include/* /app/include/
-      - cp -r share/* /app/share/
+      - mkdir -p /app/bin
+      - cp karere-backend /app/bin/
+      - chmod +x /app/bin/karere-backend
     sources:
-      - type: archive
-        url: https://nodejs.org/dist/v22.16.0/node-v22.16.0-linux-arm64.tar.xz
-        sha256: eab80cb88f8fda1e65f5e8d0420c9809bdb320b03fd34976ab7161b6e703b910
-        strip-components: 1
-        only-arches:
-          - aarch64
-      - type: archive
-        url: https://nodejs.org/dist/v22.16.0/node-v22.16.0-linux-x64.tar.xz
-        sha256: f4cb75bb036f0d0eddf6b79d9596df1aaab9ddccd6a20bf489be5abe9467e84e
-        strip-components: 1
+      - type: file
+        url: https://github.com/tobagin/KarereBackend/releases/download/v0.2.2/karere-backend-linux-x64
+        sha256: 380d522e3ddd651596f166a430c484283bd82525a4168713714bd3e77d697d9d
+        dest-filename: karere-backend
         only-arches:
           - x86_64
-
-  # Git dependencies for Baileys - install without npm
-  - name: libsignal-node
-    buildsystem: simple
-    build-commands:
-      # Install to global node_modules location (no npm install needed for this simple package)
-      - mkdir -p /app/lib/node_modules
-      - cp -r . /app/lib/node_modules/libsignal
-    sources:
-      - type: git
-        url: https://github.com/WhiskeySockets/libsignal-node.git
-        commit: 4d08331a833727c338c1a90041d17b870210dfae
-
-  - name: whiskeysockets-eslint-config
-    buildsystem: simple
-    build-commands:
-      # Install to global node_modules location (no npm install needed for this simple package)
-      - mkdir -p /app/lib/node_modules/@whiskeysockets
-      - cp -r . /app/lib/node_modules/@whiskeysockets/eslint-config
-    sources:
-      - type: git
-        url: https://github.com/whiskeysockets/eslint-config.git
-        commit: f264cd06d24a43f76e4ad2d81528f8485a1e7efe
+      - type: file
+        url: https://github.com/tobagin/KarereBackend/releases/download/v0.2.2/karere-backend-linux-arm64
+        sha256: 3a4a7034c1246c17f07326d1ac4223927cca439772d129d300cb8a5c3e2930b7
+        dest-filename: karere-backend
+        only-arches:
+          - aarch64
 
 
 
-  # NPM dependencies for backend
-  - name: npm-dependencies
-    buildsystem: simple
-    build-commands:
-      # Create a temporary package.json and package-lock.json
-      - |
-        cat > package.json << 'EOF'
-        {
-          "name": "karere-backend-deps",
-          "version": "1.0.0",
-          "dependencies": {
-            "@cacheable/node-cache": "1.5.6",
-            "@hapi/boom": "10.0.1",
-            "@hapi/hoek": "11.0.7",
-            "async-mutex": "0.4.1",
-            "axios": "1.10.0",
-            "lodash": "4.17.21",
-            "music-metadata": "9.0.3",
-            "pino": "8.21.0",
-            "protobufjs": "7.5.3",
-            "ws": "8.18.2"
-          }
-        }
-        EOF
-      # Generate package-lock.json
-      - npm install --package-lock-only --no-audit --no-fund
-      # Install dependencies using npm ci with the generated sources
-      - npm ci --cache=flatpak-node/npm-cache --offline --no-audit --no-fund
-      # Copy node_modules to the app location
-      - mkdir -p /app/share/karere-backend
-      - cp -r node_modules /app/share/karere-backend/
-    sources:
-      - npm-sources-clean.json
-
-  # Main Karere application
+  # Main Karere application (frontend only)
   - name: karere
     buildsystem: simple
     build-commands:
-      # Set up NODE_PATH to include our pre-installed Git dependencies
-      - export NODE_PATH="/app/lib/node_modules:$NODE_PATH"
-      # Create symlinks for Git dependencies in backend node_modules
-      - mkdir -p backend/node_modules/@whiskeysockets
-      - ln -sf /app/lib/node_modules/@whiskeysockets/eslint-config backend/node_modules/@whiskeysockets/eslint-config
-      - ln -sf /app/lib/node_modules/libsignal backend/node_modules/libsignal
-      # Copy npm dependencies to backend
-      - cp -r /app/share/karere-backend/node_modules/* backend/node_modules/ || true
-      # Build frontend using meson (now that blueprint-compiler is available)
-      - meson setup builddir --prefix=/app
-      - meson compile -C builddir
-      - meson install -C builddir
-      # Install backend to app directory
+      # Build frontend using meson
+      - meson setup build --prefix=/app
+      - meson compile -C build
+      - meson install -C build
+      # Install src to app directory
       - mkdir -p /app/share/karere
-      - cp -r backend /app/share/karere/
-      - cp -r frontend /app/share/karere/
+      - cp -r src /app/share/karere/
       # Install PNG icons in all standard sizes
       - mkdir -p /app/share/icons/hicolor/{16x16,22x22,24x24,32x32,48x48,64x64,128x128,256x256,512x512}/apps
-      - cp frontend/data/icons/hicolor/16x16/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/16x16/apps/
-      - cp frontend/data/icons/hicolor/22x22/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/22x22/apps/
-      - cp frontend/data/icons/hicolor/24x24/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/24x24/apps/
-      - cp frontend/data/icons/hicolor/32x32/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/32x32/apps/
-      - cp frontend/data/icons/hicolor/48x48/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/48x48/apps/
-      - cp frontend/data/icons/hicolor/64x64/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/64x64/apps/
-      - cp frontend/data/icons/hicolor/128x128/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/128x128/apps/
-      - cp frontend/data/icons/hicolor/256x256/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/256x256/apps/
-      - cp frontend/data/icons/hicolor/512x512/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/512x512/apps/
+      - cp src/data/icons/hicolor/16x16/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/16x16/apps/
+      - cp src/data/icons/hicolor/22x22/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/22x22/apps/
+      - cp src/data/icons/hicolor/24x24/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/24x24/apps/
+      - cp src/data/icons/hicolor/32x32/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/32x32/apps/
+      - cp src/data/icons/hicolor/48x48/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/48x48/apps/
+      - cp src/data/icons/hicolor/64x64/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/64x64/apps/
+      - cp src/data/icons/hicolor/128x128/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/128x128/apps/
+      - cp src/data/icons/hicolor/256x256/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/256x256/apps/
+      - cp src/data/icons/hicolor/512x512/apps/io.github.tobagin.Karere.png /app/share/icons/hicolor/512x512/apps/
       # Fix desktop file (meson installs it with the application ID name)
       - sed -i 's/@EXEC_NAME@/karere/g' /app/share/applications/io.github.tobagin.Karere.desktop
       # Fix metainfo file (meson installs it as .appdata.xml)
@@ -176,8 +108,6 @@ modules:
 
         # Set up environment for Flatpak
         export PATH="/app/bin:$PATH"
-        export NODE_PATH="/app/lib/node_modules:/app/share/karere/backend/node_modules"
-        export KARERE_BACKEND_PATH="/app/share/karere/backend"
         export PYTHONPATH="/app/share/karere:$PYTHONPATH"
 
         # Set up data directory in user space
@@ -185,15 +115,15 @@ modules:
         export KARERE_DATA_DIR="$XDG_DATA_HOME/karere"
         mkdir -p "$KARERE_DATA_DIR"
 
-        # Change to backend directory for proper relative paths
-        cd /app/share/karere/backend
+        # Set backend executable path for the frontend
+        export KARERE_BACKEND_EXECUTABLE="/app/bin/karere-backend"
 
-        # Launch Karere with Baileys backend (only supported backend)
+        # Launch Karere with compiled Baileys backend
         echo "🚀 Starting Karere (Flatpak edition)"
-        echo "📱 Using Baileys backend - Native WhatsApp Web API without browser dependency"
+        echo "📱 Using compiled Baileys backend - Standalone executable with no runtime dependencies"
 
         # Launch the application
-        exec python3 -m frontend.karere.main "$@"
+        exec python3 -m src.karere.main "$@"
         EOF
       - chmod +x /app/bin/karere
     sources:
@@ -201,9 +131,7 @@ modules:
         path: .
         skip:
           - .git
-          - builddir*
+          - build/
           - .flatpak-builder
-          - backend/node_modules
-          - backend/data
           - "*.db"
           - "*.log"

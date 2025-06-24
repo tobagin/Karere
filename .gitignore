@@ -1,11 +1,12 @@
 # Build directories
-builddir
-builddir-dev
 build/
 .flatpak-builder
 
 # Node.js
 node_modules/
+
+# Backend executable downloads
+backend-executable/
 
 # Authentication data
 baileys_auth_info/
@@ -22,10 +23,6 @@ repo/
 *.db
 *.db-shm
 *.db-wal
-# Exclude data directories but keep UI source files
-backend/data/
-# Allow frontend UI source files
-!frontend/data/ui/
 
 # Log files
 logs/
