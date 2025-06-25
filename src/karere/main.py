@@ -7,7 +7,7 @@ import subprocess
 import signal
 import atexit
 import time
-import threading
+
 import argparse
 from pathlib import Path
 
@@ -238,8 +238,8 @@ class KarereApplication(Adw.Application):
 
             print(f"✅ Backend started with PID: {self.backend_process.pid}")
 
-            # Start a simple monitoring thread for output
-            threading.Thread(target=self._monitor_backend_output, daemon=True).start()
+            # Check if backend started successfully
+            print("✅ Backend process started successfully")
 
             # Wait a moment for backend to start
             time.sleep(2)
@@ -258,6 +258,9 @@ class KarereApplication(Adw.Application):
                     pass
                 return False
 
+            # Start checking for backend readiness
+            GLib.timeout_add(1000, self._check_backend_ready)
+
             return True
 
         except Exception as e:
@@ -268,33 +271,16 @@ class KarereApplication(Adw.Application):
 
 
 
-    def _monitor_backend_output(self):
-        """Monitor backend process output for debugging."""
-        if not self.backend_process:
-            return
-
-        try:
-            while self.backend_process.poll() is None:
-                output = self.backend_process.stdout.readline()
-                if output:
-                    print(f"Backend: {output.decode().strip()}")
-
-                    # Check if backend is ready
-                    if b"WebSocket server started" in output:
-                        self.backend_ready = True
-                        GLib.idle_add(self._on_backend_ready)
-
-        except Exception as e:
-            print(f"Error monitoring backend output: {e}")
-
-    def _on_backend_ready(self):
-        """Called when backend is ready to accept connections."""
-        print("Backend is ready, setting up WebSocket connection...")
-        # Small delay to ensure backend is fully ready
-        GLib.timeout_add(1000, self._delayed_websocket_setup)
+    def _check_backend_ready(self):
+        """Simple check if backend is ready by attempting WebSocket connection."""
+        print("🔍 Checking if backend is ready...")
+        # Give backend a moment to start up
+        GLib.timeout_add(3000, self._delayed_websocket_setup)
+        return False  # Don't repeat
 
     def _delayed_websocket_setup(self):
-        """Setup WebSocket connection after backend is ready."""
+        """Setup WebSocket connection after giving backend time to start."""
+        print("🔌 Setting up WebSocket connection...")
         self.setup_websocket()
         return False  # Don't repeat the timeout
 
