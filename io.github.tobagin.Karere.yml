@@ -24,12 +24,15 @@ finish-args:
   - --filesystem=xdg-download
   - --filesystem=xdg-pictures
   - --filesystem=xdg-documents
+  # Access to user data directory for backend storage
+  - --filesystem=xdg-data
   # Device access for notifications
   - --talk-name=org.freedesktop.Notifications
   # Session bus access
   - --socket=session-bus
   # Allow spawning subprocesses (for Baileys backend)
   - --allow=devel
+
 
 modules:
   # Blueprint compiler for UI files
@@ -50,26 +53,40 @@ modules:
         url: https://files.pythonhosted.org/packages/5a/84/44687a29792a70e111c5c477230a72c4b957d88d16141199bf9acb7537a3/websocket_client-1.8.0-py3-none-any.whl
         sha256: 17b44cc997f5c498e809b22cdf2d9c7a9e71c02c8cc2b6c56e7c2d1239bfa526
 
-  # Download karere-backend executable
+  # Build karere-backend from Node.js source with vendored dependencies
   - name: karere-backend
     buildsystem: simple
     build-commands:
-      - mkdir -p /app/bin
-      - cp karere-backend /app/bin/
-      - chmod +x /app/bin/karere-backend
+      # Create backend directory structure
+      - mkdir -p /app/share/karere/backend
+      # Copy source files from git source
+      - cp -r src/ /app/share/karere/backend/
+      - cp package.json /app/share/karere/backend/
+      - cp package-lock.json /app/share/karere/backend/
+      # Create node_modules directory and copy all vendored dependencies
+      - mkdir -p /app/share/karere/backend/node_modules
+      # Copy all package directories (the archive extracts node_modules contents directly)
+      - |
+        for dir in */; do
+          # Skip our own source directories
+          if [[ "$dir" != "src/" && "$dir" != "scripts/" && "$dir" != ".git/" && "$dir" != ".github/" ]]; then
+            cp -r "$dir" /app/share/karere/backend/node_modules/
+          fi
+        done
+      # Also copy scoped packages (@-prefixed directories)
+      - cp -r @* /app/share/karere/backend/node_modules/ 2>/dev/null || true
+      # Make the backend executable
+      - chmod +x /app/share/karere/backend/src/backend.js
     sources:
-      - type: file
-        url: https://github.com/tobagin/KarereBackend/releases/download/v0.2.2/karere-backend-linux-x64
-        sha256: 380d522e3ddd651596f166a430c484283bd82525a4168713714bd3e77d697d9d
-        dest-filename: karere-backend
-        only-arches:
-          - x86_64
-      - type: file
-        url: https://github.com/tobagin/KarereBackend/releases/download/v0.2.2/karere-backend-linux-arm64
-        sha256: 3a4a7034c1246c17f07326d1ac4223927cca439772d129d300cb8a5c3e2930b7
-        dest-filename: karere-backend
-        only-arches:
-          - aarch64
+      # Backend source code
+      - type: git
+        url: https://github.com/tobagin/KarereBackend.git
+        tag: v0.2.4
+        commit: 5c5af0859718e295a5b88515900731a2e992cc65
+      # Vendored dependencies archive
+      - type: archive
+        url: https://github.com/tobagin/KarereBackend/releases/download/v0.2.4/karere-backend-node-modules-v0.2.4.tar.gz
+        sha256: 34ce786c253c3f765ec4493b6f99257fcb43fe88d4099c9f19410ab066925cee
 
 
 
@@ -115,8 +132,7 @@ modules:
         export KARERE_DATA_DIR="$XDG_DATA_HOME/karere"
         mkdir -p "$KARERE_DATA_DIR"
 
-        # Set backend executable path for the frontend
-        export KARERE_BACKEND_EXECUTABLE="/app/bin/karere-backend"
+        # Backend executable is now in the Python module directory
 
         # Launch Karere with compiled Baileys backend
         echo "🚀 Starting Karere (Flatpak edition)"
