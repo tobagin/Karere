@@ -143,11 +143,7 @@ modules:
         EOF
       - chmod +x /app/bin/karere
     sources:
-      - type: dir
-        path: .
-        skip:
-          - .git
-          - build/
-          - .flatpak-builder
-          - "*.db"
-          - "*.log"
+      - type: git
+        url: https://github.com/tobagin/Karere.git
+        tag: v0.6.5
+        commit: b8afcc8253031c124c2f5b2c8537334d735cf44a
