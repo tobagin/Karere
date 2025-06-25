@@ -145,5 +145,5 @@ modules:
     sources:
       - type: git
         url: https://github.com/tobagin/Karere.git
-        tag: v0.6.5
-        commit: b8afcc8253031c124c2f5b2c8537334d735cf44a
+        tag: v0.6.6
+        commit: 36edbf07c45be346c500e3c081cb7aba7995dc11
