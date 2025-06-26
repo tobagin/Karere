@@ -229,8 +229,8 @@ class KarereApplication(Adw.Application):
             self.backend_process = subprocess.Popen(
                 [node_executable, 'src/backend.js'],
                 stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=None,  # Let backend output flow to terminal
+                stderr=None,  # Let backend errors flow to terminal
                 env=env,
                 cwd=backend_dir,  # Run from backend directory so node can find node_modules
                 preexec_fn=os.setsid,  # Create new process group
@@ -250,15 +250,7 @@ class KarereApplication(Adw.Application):
             # Check if backend process is still running
             if self.backend_process.poll() is not None:
                 print(f"ERROR: Backend process exited with code: {self.backend_process.returncode}")
-                # Try to read any error output
-                try:
-                    stdout, stderr = self.backend_process.communicate(timeout=1)
-                    if stdout:
-                        print(f"Backend stdout: {stdout}")
-                    if stderr:
-                        print(f"Backend stderr: {stderr}")
-                except:
-                    pass
+                print("Backend output should be visible above (if any)")
                 return False
 
             # Start checking for backend readiness
