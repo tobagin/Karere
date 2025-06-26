@@ -30,8 +30,6 @@ finish-args:
   - --talk-name=org.freedesktop.Notifications
   # Session bus access
   - --socket=session-bus
-  # Allow spawning subprocesses (for Baileys backend)
-  - --allow=devel
 
 
 modules:
@@ -107,7 +105,7 @@ modules:
       - type: git
         url: https://github.com/tobagin/KarereBackend.git
         tag: v0.2.7
-        commit: da1065351750dc33984c5d8fdd75a1d588be320c
+        commit: 193773f4096c5de49604ba4cfa9dd8049e9bd459
       # Vendored dependencies archive
       - type: archive
         url: https://github.com/tobagin/KarereBackend/releases/download/v0.2.7/karere-backend-node-modules-v0.2.7.tar.gz
