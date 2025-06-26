@@ -96,6 +96,8 @@ modules:
         done
       # Also copy scoped packages (@-prefixed directories)
       - cp -r @* /app/share/karere/backend/node_modules/ 2>/dev/null || true
+      # Remove problematic native modules - backend will use fallback
+      - rm -rf /app/share/karere/backend/node_modules/sqlite3
       # Make the backend executable
       - chmod +x /app/share/karere/backend/src/backend.js
       # Verify Node.js installation
@@ -104,12 +106,12 @@ modules:
       # Backend source code
       - type: git
         url: https://github.com/tobagin/KarereBackend.git
-        tag: v0.2.5
-        commit: 5085566e0ef24cef98b749d3a6859b05c11538cf
+        tag: v0.2.6
+        commit: 6bc9081f5d63a58118c28a6be9b095cbfd5701ad
       # Vendored dependencies archive
       - type: archive
-        url: https://github.com/tobagin/KarereBackend/releases/download/v0.2.5/karere-backend-node-modules-v0.2.5.tar.gz
-        sha256: bcb394bbce5e64605be0303d008d6e297268348384650030126b46008921890b
+        url: https://github.com/tobagin/KarereBackend/releases/download/v0.2.6/karere-backend-node-modules-v0.2.6.tar.gz
+        sha256: 15c43e782ef8ad4fbf212fb01ba540f54b6f32ae5e18874fc88f87bfb56aa8f6
 
 
 
