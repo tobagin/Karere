@@ -221,10 +221,13 @@ class KarereApplication(Adw.Application):
             env = os.environ.copy()
             env['KARERE_DATA_DIR'] = data_dir
 
+            # Use the specific Node.js 24.2.0 executable from Flatpak
+            node_executable = '/app/bin/node'
+
             # Start the Node.js backend process
-            print(f"🚀 Starting Node.js backend: node src/backend.js")
+            print(f"🚀 Starting Node.js backend: {node_executable} src/backend.js")
             self.backend_process = subprocess.Popen(
-                ['node', 'src/backend.js'],
+                [node_executable, 'src/backend.js'],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
