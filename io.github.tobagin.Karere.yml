@@ -107,7 +107,7 @@ modules:
       - type: git
         url: https://github.com/tobagin/KarereBackend.git
         tag: v0.2.6
-        commit: 6bc9081f5d63a58118c28a6be9b095cbfd5701ad
+        commit: 6fc5fc228e014c86a7bb3fa009f103fc922d80c7
       # Vendored dependencies archive
       - type: archive
         url: https://github.com/tobagin/KarereBackend/releases/download/v0.2.6/karere-backend-node-modules-v0.2.6.tar.gz
