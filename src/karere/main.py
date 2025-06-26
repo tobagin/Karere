@@ -315,12 +315,12 @@ class KarereApplication(Adw.Application):
 
     def on_qr_received(self, _, qr_url):
         """Handler for when QR code is received from backend."""
-        # Only show QR view if we're connected to backend
-        if self.connected:
+        print(f"QR code received from backend (connected: {self.connected}): {qr_url[:50]}...")
+        if self.win:
             self.win.show_qr_view()
             self.win.show_qr_code(qr_url)
         else:
-            print("QR code received but not connected to backend, ignoring.")
+            print("Warning: QR code received but window not ready")
 
     def on_status_update(self, _, message):
         self.win.show_toast(message)

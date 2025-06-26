@@ -1,6 +1,7 @@
 # Build directories
 build/
 .flatpak-builder
+.flatpak-build
 
 # Node.js
 node_modules/
