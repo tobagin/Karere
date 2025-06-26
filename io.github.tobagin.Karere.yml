@@ -53,6 +53,27 @@ modules:
         url: https://files.pythonhosted.org/packages/5a/84/44687a29792a70e111c5c477230a72c4b957d88d16141199bf9acb7537a3/websocket_client-1.8.0-py3-none-any.whl
         sha256: 17b44cc997f5c498e809b22cdf2d9c7a9e71c02c8cc2b6c56e7c2d1239bfa526
 
+  # Node.js 24.2.0 for backend execution
+  - name: nodejs
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/bin /app/lib /app/include
+      - cp -r bin/* /app/bin/
+      - cp -r lib/* /app/lib/
+      - cp -r include/* /app/include/
+      - cp -r share/* /app/share/
+    sources:
+      - type: archive
+        url: https://nodejs.org/dist/v24.2.0/node-v24.2.0-linux-x64.tar.xz
+        sha256: 91a0794f4dbc94bc4a9296139ed9101de21234982bae2b325e37ebd3462273e5
+        only-arches:
+          - x86_64
+      - type: archive
+        url: https://nodejs.org/dist/v24.2.0/node-v24.2.0-linux-arm64.tar.xz
+        sha256: cd4f25d2f05d0750159a209915267af6f9970ade4702a8810641120404bf54ee
+        only-arches:
+          - aarch64
+
   # Build karere-backend from Node.js source with vendored dependencies
   - name: karere-backend
     buildsystem: simple
@@ -77,6 +98,8 @@ modules:
       - cp -r @* /app/share/karere/backend/node_modules/ 2>/dev/null || true
       # Make the backend executable
       - chmod +x /app/share/karere/backend/src/backend.js
+      # Verify Node.js installation
+      - /app/bin/node --version
     sources:
       # Backend source code
       - type: git
@@ -132,11 +155,13 @@ modules:
         export KARERE_DATA_DIR="$XDG_DATA_HOME/karere"
         mkdir -p "$KARERE_DATA_DIR"
 
-        # Backend executable is now in the Python module directory
+        # Ensure Node.js is available for backend
+        export NODE_PATH="/app/lib/node_modules"
 
-        # Launch Karere with compiled Baileys backend
+        # Launch Karere with Node.js backend
         echo "🚀 Starting Karere (Flatpak edition)"
-        echo "📱 Using compiled Baileys backend - Standalone executable with no runtime dependencies"
+        echo "📱 Using Node.js 24.2.0 backend with vendored dependencies"
+        echo "🔧 Node.js version: $(/app/bin/node --version)"
 
         # Launch the application
         exec python3 -m src.karere.main "$@"
